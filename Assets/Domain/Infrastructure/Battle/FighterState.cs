@@ -1,0 +1,274 @@
+﻿using System;
+using System.Collections.Generic;
+using Domain.Infrastructure.Input;
+using Domain.Service;
+using UnityEngine;
+
+namespace Domain.Infrastructure.Battle
+{
+    public enum FighterStatus : byte
+    {
+        Neutral,
+        Attacking,
+        CounterStance,
+        Hitstun,
+        Blockstun
+    }
+    
+    public readonly struct FighterSnapshot
+    {
+        public readonly int Frame;
+        public readonly Vector2 Position;
+        public readonly bool FacingRight;
+        public readonly FighterStatus Status;
+        public readonly string MoveId;
+        public readonly int MoveFrame;
+        public readonly MovePhase Phase;
+ 
+        public FighterSnapshot(int frame, FighterState f)
+        {
+            Frame = frame;
+            Position = f.Position;
+            FacingRight = f.FacingRight;
+            Status = f.Status;
+            MoveId = f.CurrentMove?.MoveId;
+            MoveFrame = f.MoveFrame;
+            Phase = f.Phase;
+        }
+    }
+    
+    public sealed class FighterState
+    {
+        public string Name;
+        public Vector2 Position;
+        public bool FacingRight = true;
+        public int Health = 1000;
+ 
+        /// <summary>默认受击框（体框）。精细化时可扩展为随招式变化的 Hurtbox 序列。</summary>
+        public Box BodyBox = new Box(0f, 0.9f, 0.6f, 1.8f);
+ 
+        private readonly FightingInputController input;
+        private readonly MoveTable moveTable;
+        private readonly Dictionary<string, MoveData> moves = new Dictionary<string, MoveData>();
+ 
+        public FighterStatus Status { get; private set; } = FighterStatus.Neutral;
+        public MoveData CurrentMove { get; private set; }
+        public int MoveFrame { get; private set; }
+ 
+        private int stunRemaining;
+        private bool moveConnected; // 当前招是否已命中过（防止多段重复判定，多段招需扩展）
+ 
+        /// <summary>出招瞬间广播——对手侧"看到对方起手"的反应系统订阅这里，而不是去读按键。</summary>
+        public event Action<FighterState, MoveData> MoveStarted;
+ 
+        public FighterState(FightingInputController input, MoveTable moveTable)
+        {
+            this.input = input;
+            this.moveTable = moveTable;
+        }
+ 
+        /// <summary>
+        /// 当前姿态。招式表用它把同一输入解析成不同招式（5LP / 2LP / j.LP）。
+        /// 目前由方向键推断；将来接入跳跃系统后 Airborne 应由 Y 坐标/跳跃状态决定。
+        /// </summary>
+        public Stance CurrentStance
+        {
+            get
+            {
+                if (Position.y > 0.01f) return Stance.Airborne;
+                byte dir = FacingRight
+                    ? input.Buffer.Latest.Direction
+                    : Numpad.Mirror(input.Buffer.Latest.Direction);
+                return (dir == 1 || dir == 2 || dir == 3) ? Stance.Crouching : Stance.Standing;
+            }
+        }
+ 
+        // ---- 对外只读视图 ----
+        public InputBuffer InputHistory => input.Buffer;   // 拒止/拆投回看 & 假人读意图
+        public CommandQueue Commands => input.Commands;
+ 
+        public MovePhase Phase =>
+            (Status == FighterStatus.Attacking || Status == FighterStatus.CounterStance) && CurrentMove != null
+                ? CurrentMove.PhaseAt(MoveFrame)
+                : MovePhase.None;
+ 
+        public bool Actionable => Status == FighterStatus.Neutral;
+ 
+        public bool IsInvulnerable =>
+            CurrentMove != null && CurrentMove.InvulnTo > 0
+            && MoveFrame >= CurrentMove.InvulnFrom && MoveFrame <= CurrentMove.InvulnTo
+            && (Status == FighterStatus.Attacking || Status == FighterStatus.CounterStance);
+ 
+        public bool CounterCatchActive =>
+            Status == FighterStatus.CounterStance && CurrentMove != null
+            && MoveFrame >= CurrentMove.CatchFrom && MoveFrame <= CurrentMove.CatchTo;
+ 
+        public bool CanMoveConnect =>
+            Status == FighterStatus.Attacking && CurrentMove != null
+            && CurrentMove.Hitboxes.Length > 0 && !moveConnected;
+ 
+        public FighterSnapshot Snapshot(int frame) => new FighterSnapshot(frame, this);
+ 
+        public void AddMove(MoveData move) => moves[move.MoveId] = move;
+ 
+        /// <summary>由 BattleLoop 每逻辑帧调用（输入采样之后、碰撞裁决之前）。</summary>
+        public void Tick(int frame)
+        {
+            switch (Status)
+            {
+                case FighterStatus.Hitstun:
+                case FighterStatus.Blockstun:
+                    stunRemaining--;
+                    if (stunRemaining > 0) return;
+                    Status = FighterStatus.Neutral;
+                    // 硬直结束的这一帧立即可行动 → 队列里预输入的招当帧出 = reversal 手感
+                    goto case FighterStatus.Neutral;
+ 
+                case FighterStatus.Attacking:
+                case FighterStatus.CounterStance:
+                    MoveFrame++;
+                    if (MoveFrame <= CurrentMove.TotalFrames)
+                    {
+                        ApplyRootMotion(); // 逻辑位移在这里结算，与判定同帧、同确定性
+                        TryCancel();       // 招式进行中：命中后可被取消 → 连招
+                        return;
+                    }
+                    EndMove();
+                    goto case FighterStatus.Neutral; // 收招当帧即可行动（首个可行动帧）
+ 
+                case FighterStatus.Neutral:
+                    TryAct(null); // 中立态出招，无取消来源
+                    return;
+            }
+        }
+ 
+        /// <summary>
+        /// 连招取消：当前招【已命中或被防】且处于取消窗口内时，可被新招打断。
+        /// 取消窗口 = 从判定帧开始到招式结束（CancelWindowFrom 可按招微调）。
+        /// 未命中（放空）不可取消——这是格斗游戏的基本公平性：空挥要吃后摇。
+        /// </summary>
+        private void TryCancel()
+        {
+            if (!moveConnected) return; // 没打中，不给取消
+            if (CurrentMove.CancelFrom > 0 && MoveFrame < CurrentMove.CancelFrom) return;
+ 
+            TryAct(CurrentMove.MoveId); // 以当前招为取消来源解析新招
+        }
+ 
+        private void TryAct(string cancelSource)
+        {
+            // ① 搓招指令（队列带优先级与预输入窗口）→ 经招式表解析成具体招式
+            if (input.Commands.TryPeek(out DetectedCommand cmd,
+                    c => moveTable.ResolveCommand(
+                        c.Id, input.Buffer.Latest.Pressed, CurrentStance, cancelSource, this) != null))
+            {
+                string moveId = moveTable.ResolveCommand(
+                    cmd.Id, input.Buffer.Latest.Pressed, CurrentStance, cancelSource, this);
+                input.Commands.TryConsume(out _, c => c.Id == cmd.Id); // 确认可出招后才消费
+                StartMove(moveId);
+                return;
+            }
+ 
+            InputFrame latest = input.Buffer.Latest;
+ 
+            // ② 组合键投（LP+LK 同时按下）。投不能取消出招
+            if (cancelSource == null)
+            {
+                bool throwInput =
+                    ((latest.Pressed & ButtonMask.LP) != 0 && (latest.Held & ButtonMask.LK) != 0) ||
+                    ((latest.Pressed & ButtonMask.LK) != 0 && (latest.Held & ButtonMask.LP) != 0);
+                if (throwInput && moves.ContainsKey("THROW"))
+                {
+                    StartMove("THROW");
+                    return;
+                }
+            }
+ 
+            // ③ 普通技：裸按键 → 招式表解析（姿态决定 5LP / 2LP / j.LP）
+            if (latest.Pressed != ButtonMask.None)
+            {
+                string moveId = moveTable.ResolveButton(
+                    latest.Pressed, CurrentStance, cancelSource, this);
+                if (moveId != null) StartMove(moveId);
+            }
+        }
+ 
+        public bool StartMove(string moveId)
+        {
+            if (!moves.TryGetValue(moveId, out MoveData move)) return false;
+ 
+            CurrentMove = move;
+            MoveFrame = 1;
+            moveConnected = false;
+            Status = move.IsCounterStance ? FighterStatus.CounterStance : FighterStatus.Attacking;
+            MoveStarted?.Invoke(this, move);
+            ApplyRootMotion(); // 出招当帧（第 1 帧）的位移
+            return true;
+        }
+ 
+        /// <summary>
+        /// 消费 MoveData.RootMotion 中当前帧的位移增量。位移定义在"面朝右"空间，
+        /// 按当前朝向镜像 X——与搓招、判定框的镜像规则完全一致。
+        /// 被打断（受击/被投）时招式直接结束，后续位移自然不再结算，
+        /// 不存在 Animator root motion 那种"中断残留"问题。
+        /// </summary>
+        private void ApplyRootMotion()
+        {
+            Vector2[] motion = CurrentMove?.RootMotion;
+            if (motion == null) return;
+ 
+            int index = MoveFrame - 1;
+            if (index < 0 || index >= motion.Length) return;
+ 
+            Vector2 delta = motion[index];
+            if (!FacingRight) delta.x = -delta.x;
+            Position += delta;
+        }
+ 
+        private void EndMove()
+        {
+            CurrentMove = null;
+            MoveFrame = 0;
+            moveConnected = false;
+            Status = FighterStatus.Neutral;
+        }
+ 
+        /// <summary>
+        /// 防御成立检查：按住后方向，且方向档位与攻击位置属性匹配。
+        /// Low 必须蹲防（1），Overhead 必须站防（4），Mid 站蹲皆可。
+        /// </summary>
+        public bool GuardCheck(AttackAttribute attack)
+        {
+            if (Status != FighterStatus.Neutral && Status != FighterStatus.Blockstun) return false;
+ 
+            byte dir = FacingRight
+                ? input.Buffer.Latest.Direction
+                : Numpad.Mirror(input.Buffer.Latest.Direction);
+ 
+            if ((attack & AttackAttribute.Low) != 0) return dir == 1;
+            if ((attack & AttackAttribute.Overhead) != 0) return dir == 4;
+            return dir == 4 || dir == 1;
+        }
+ 
+        // ---- 由 CollisionResolver 调用的结果施加 ----
+ 
+        public void MarkMoveConnected() => moveConnected = true;
+ 
+        public void ApplyHit(int damage, int hitstunFrames)
+        {
+            Health -= damage;
+            EndMove();
+            Status = FighterStatus.Hitstun;
+            stunRemaining = hitstunFrames;
+            // 受击瞬间清空旧指令：受击前搓好的招作废；硬直期间新搓的会重新入队 → 这正是 reversal
+            input.Commands.Clear();
+        }
+ 
+        public void ApplyBlockstun(int frames)
+        {
+            EndMove();
+            Status = FighterStatus.Blockstun;
+            stunRemaining = frames;
+        }
+    }
+}
