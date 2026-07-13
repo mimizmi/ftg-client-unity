@@ -46,6 +46,12 @@ namespace Domain.Infrastructure.Battle
  
         /// <summary>默认受击框（体框）。精细化时可扩展为随招式变化的 Hurtbox 序列。</summary>
         public Box BodyBox = new Box(0f, 0.9f, 0.6f, 1.8f);
+        
+        /// <summary>
+        /// 推挡框：防止角色重叠。通常整个角色固定不变（不随招式变化），
+        /// 这是格斗游戏的惯例——推挡框若随招式伸缩，角色会被自己的招式"推走"，位置变得不可预测。
+        /// </summary>
+        public Box PushBox = new Box(0f, 0.9f, 0.55f, 1.8f);
  
         private readonly FightingInputController input;
         private readonly MoveTable moveTable;
@@ -61,11 +67,14 @@ namespace Domain.Infrastructure.Battle
         /// <summary>出招瞬间广播——对手侧"看到对方起手"的反应系统订阅这里，而不是去读按键。</summary>
         public event Action<FighterState, MoveData> MoveStarted;
  
-        public FighterState(FightingInputController input, MoveTable moveTable)
+        public FighterState(FightingInputController input, MoveTable moveTable, MovementConfig movementConfig)
         {
             this.input = input;
             this.moveTable = moveTable;
+            Movement = new MovementController(movementConfig, input);
         }
+        
+        public MovementController Movement { get; }
  
         /// <summary>
         /// 当前姿态。招式表用它把同一输入解析成不同招式（5LP / 2LP / j.LP）。
@@ -75,7 +84,7 @@ namespace Domain.Infrastructure.Battle
         {
             get
             {
-                if (Position.y > 0.01f) return Stance.Airborne;
+                if (Movement.IsAirborne) return Stance.Airborne;
                 byte dir = FacingRight
                     ? input.Buffer.Latest.Direction
                     : Numpad.Mirror(input.Buffer.Latest.Direction);
@@ -85,6 +94,7 @@ namespace Domain.Infrastructure.Battle
  
         // ---- 对外只读视图 ----
         public InputBuffer InputHistory => input.Buffer;   // 拒止/拆投回看 & 假人读意图
+        public FightingInputController InputController => input;
         public CommandQueue Commands => input.Commands;
  
         public MovePhase Phase =>
@@ -94,25 +104,52 @@ namespace Domain.Infrastructure.Battle
  
         public bool Actionable => Status == FighterStatus.Neutral;
  
+        /// <summary>
+        /// 无敌。两个来源：招式自带的无敌帧（升龙 1~8 帧），
+        /// 以及移动状态机的后跃步无敌帧——后者是后跃能"逃"的原因。
+        /// </summary>
         public bool IsInvulnerable =>
-            CurrentMove != null && CurrentMove.InvulnTo > 0
-            && MoveFrame >= CurrentMove.InvulnFrom && MoveFrame <= CurrentMove.InvulnTo
-            && (Status == FighterStatus.Attacking || Status == FighterStatus.CounterStance);
- 
+            (CurrentMove != null && CurrentMove.InvulnTo > 0
+                                 && MoveFrame >= CurrentMove.InvulnFrom && MoveFrame <= CurrentMove.InvulnTo
+                                 && (Status == FighterStatus.Attacking || Status == FighterStatus.CounterStance))
+            || Movement.IsInvulnerable;
+
         public bool CounterCatchActive =>
             Status == FighterStatus.CounterStance && CurrentMove != null
-            && MoveFrame >= CurrentMove.CatchFrom && MoveFrame <= CurrentMove.CatchTo;
- 
+                                                  && MoveFrame >= CurrentMove.CatchFrom && MoveFrame <= CurrentMove.CatchTo;
+
         public bool CanMoveConnect =>
             Status == FighterStatus.Attacking && CurrentMove != null
-            && CurrentMove.Hitboxes.Length > 0 && !moveConnected;
+                                              && CurrentMove.HasBoxes(BoxKind.Hit) && !moveConnected;
  
+        public void CollectHurtboxes(List<Box> results)
+        {
+            if (CurrentMove != null && CurrentMove.HasBoxes(BoxKind.Hurt)
+                                    && (Status == FighterStatus.Attacking || Status == FighterStatus.CounterStance))
+            {
+                CurrentMove.CollectBoxes(MoveFrame, BoxKind.Hurt, results);
+                if (results.Count > 0) return;
+            }
+
+            results.Clear();
+            results.Add(BodyBox);
+        }
+
         public FighterSnapshot Snapshot(int frame) => new FighterSnapshot(frame, this);
  
         public void AddMove(MoveData move) => moves[move.MoveId] = move;
  
         /// <summary>由 BattleLoop 每逻辑帧调用（输入采样之后、碰撞裁决之前）。</summary>
         public void Tick(int frame)
+        {
+            TickCombat();
+
+            // 移动只在可行动时生效。出招中/硬直中，移动层自动归零（空中状态除外——
+            // 空中被打仍在空中，重力照常作用）
+            Movement.Tick(Actionable, FacingRight, ref Position);
+        }
+
+        private void TickCombat()
         {
             switch (Status)
             {
@@ -123,7 +160,7 @@ namespace Domain.Infrastructure.Battle
                     Status = FighterStatus.Neutral;
                     // 硬直结束的这一帧立即可行动 → 队列里预输入的招当帧出 = reversal 手感
                     goto case FighterStatus.Neutral;
- 
+
                 case FighterStatus.Attacking:
                 case FighterStatus.CounterStance:
                     MoveFrame++;
@@ -135,9 +172,11 @@ namespace Domain.Infrastructure.Battle
                     }
                     EndMove();
                     goto case FighterStatus.Neutral; // 收招当帧即可行动（首个可行动帧）
- 
+
                 case FighterStatus.Neutral:
-                    TryAct(null); // 中立态出招，无取消来源
+                    // 移动状态机锁死的帧（起跳预备、冲刺起步、落地硬直）不能出招——
+                    // 这些窗口正是强力移动的代价
+                    if (Movement.CanAct) TryAct(null);
                     return;
             }
         }
@@ -151,7 +190,7 @@ namespace Domain.Infrastructure.Battle
         {
             if (!moveConnected) return; // 没打中，不给取消
             if (CurrentMove.CancelFrom > 0 && MoveFrame < CurrentMove.CancelFrom) return;
- 
+
             TryAct(CurrentMove.MoveId); // 以当前招为取消来源解析新招
         }
  
@@ -196,7 +235,7 @@ namespace Domain.Infrastructure.Battle
         public bool StartMove(string moveId)
         {
             if (!moves.TryGetValue(moveId, out MoveData move)) return false;
- 
+
             CurrentMove = move;
             MoveFrame = 1;
             moveConnected = false;
@@ -205,7 +244,7 @@ namespace Domain.Infrastructure.Battle
             ApplyRootMotion(); // 出招当帧（第 1 帧）的位移
             return true;
         }
- 
+
         /// <summary>
         /// 消费 MoveData.RootMotion 中当前帧的位移增量。位移定义在"面朝右"空间，
         /// 按当前朝向镜像 X——与搓招、判定框的镜像规则完全一致。
@@ -216,15 +255,15 @@ namespace Domain.Infrastructure.Battle
         {
             Vector2[] motion = CurrentMove?.RootMotion;
             if (motion == null) return;
- 
+
             int index = MoveFrame - 1;
             if (index < 0 || index >= motion.Length) return;
- 
+
             Vector2 delta = motion[index];
             if (!FacingRight) delta.x = -delta.x;
             Position += delta;
         }
- 
+
         private void EndMove()
         {
             CurrentMove = null;
@@ -232,7 +271,7 @@ namespace Domain.Infrastructure.Battle
             moveConnected = false;
             Status = FighterStatus.Neutral;
         }
- 
+
         /// <summary>
         /// 防御成立检查：按住后方向，且方向档位与攻击位置属性匹配。
         /// Low 必须蹲防（1），Overhead 必须站防（4），Mid 站蹲皆可。
@@ -240,20 +279,24 @@ namespace Domain.Infrastructure.Battle
         public bool GuardCheck(AttackAttribute attack)
         {
             if (Status != FighterStatus.Neutral && Status != FighterStatus.Blockstun) return false;
- 
+
+            // 移动状态限制：空中、冲刺、起跳预备、落地硬直中都不能防御——
+            // 这正是"跳跃有风险"和"冲刺有风险"的来源
+            if (!Movement.CanGuard) return false;
+
             byte dir = FacingRight
                 ? input.Buffer.Latest.Direction
                 : Numpad.Mirror(input.Buffer.Latest.Direction);
- 
+
             if ((attack & AttackAttribute.Low) != 0) return dir == 1;
             if ((attack & AttackAttribute.Overhead) != 0) return dir == 4;
             return dir == 4 || dir == 1;
         }
- 
+
         // ---- 由 CollisionResolver 调用的结果施加 ----
- 
+
         public void MarkMoveConnected() => moveConnected = true;
- 
+
         public void ApplyHit(int damage, int hitstunFrames)
         {
             Health -= damage;
@@ -262,8 +305,11 @@ namespace Domain.Infrastructure.Battle
             stunRemaining = hitstunFrames;
             // 受击瞬间清空旧指令：受击前搓好的招作废；硬直期间新搓的会重新入队 → 这正是 reversal
             input.Commands.Clear();
+
+            // 受击打断移动。但空中被打仍在空中——重力继续作用，落地才结束
+            if (!Movement.IsAirborne) Movement.Reset();
         }
- 
+
         public void ApplyBlockstun(int frames)
         {
             EndMove();

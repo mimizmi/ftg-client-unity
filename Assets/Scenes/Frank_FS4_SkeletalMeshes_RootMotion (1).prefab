@@ -3117,7 +3117,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7485784753926321718}
   - component: {fileID: 544265881714616362}
-  - component: {fileID: 9163028843647956602}
+  - component: {fileID: 1645633900298408325}
   m_Layer: 0
   m_Name: Frank_FS4_SkeletalMeshes_RootMotion (1)
   m_TagString: Untagged
@@ -3150,7 +3150,7 @@ Transform:
   - {fileID: 4069203288044297978}
   - {fileID: 3161871795674842066}
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: -90, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 90, z: 0}
 --- !u!95 &544265881714616362
 Animator:
   serializedVersion: 5
@@ -3162,9 +3162,9 @@ Animator:
   m_Enabled: 1
   m_Avatar: {fileID: 9000000, guid: 95d92a665a7f9a247a04c2c875eadc74, type: 3}
   m_Controller: {fileID: 9100000, guid: 91c82ce1fc2f1be4da8b488c08e5ec37, type: 2}
-  m_CullingMode: 1
+  m_CullingMode: 0
   m_UpdateMode: 0
-  m_ApplyRootMotion: 1
+  m_ApplyRootMotion: 0
   m_LinearVelocityBlending: 0
   m_StabilizeFeet: 0
   m_WarningMessage: 
@@ -3172,7 +3172,7 @@ Animator:
   m_AllowConstantClipSamplingOptimization: 1
   m_KeepAnimatorStateOnDisable: 0
   m_WriteDefaultValuesOnDisable: 0
---- !u!114 &9163028843647956602
+--- !u!114 &1645633900298408325
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -3181,11 +3181,24 @@ MonoBehaviour:
   m_GameObject: {fileID: 9088115490246034608}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 751ad6a70bab4ad6b83b560c57c0d6eb, type: 3}
+  m_Script: {fileID: 11500000, guid: 80fb96f3047242eea389b7a5e8a122af, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  inputAssets: {fileID: 11400000, guid: c0514677d1744dc4897a0832e602f31e, type: 2}
-  FacingRight: 1
+  animator: {fileID: 544265881714616362}
+  idleState: Frank_FS4_Idle_Stand_Loop
+  hitstunState: Frank_FS4_Hit_High_Front
+  blockstunState: Frank_FS4_Hit_High_Front
+  walkForwardState: Frank_FS4_Step_Forward
+  walkBackwardState: Frank_FS4_Step_Backward
+  dashState: Frank_FS4_Dash_Forward
+  runState: Run
+  backDashState: Frank_FS4_Dash_Backward
+  jumpSquatState: Frank_FS4_Jump_N_High_All
+  airborneState: Airborne
+  landingState: Landing
+  facingStyle: 0
+  facingRightYaw: 90
+  facingLeftYaw: 270
 --- !u!1 &9209776658652409119
 GameObject:
   m_ObjectHideFlags: 0

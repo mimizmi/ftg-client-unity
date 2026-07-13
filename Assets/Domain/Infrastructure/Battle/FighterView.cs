@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using Domain.Infrastructure.Motion;
 using Domain.Service;
+using Domain.Service.Battle;
 using UnityEngine;
 
 namespace Domain.Infrastructure.Battle
@@ -9,50 +10,92 @@ namespace Domain.Infrastructure.Battle
     public class FighterView : MonoBehaviour
     {
         [SerializeField] private Animator animator;
-        [SerializeField] FightingInputController inputController;
         [SerializeField] private string idleState = "Frank_FS4_Idle_Stand_Loop";
         [SerializeField] private string hitstunState = "Frank_FS4_Hit_High_Front";
         [SerializeField] private string blockstunState = "Frank_FS4_Hit_High_Front";
+        
+        [Header("Movement的 Animator State 名")]
+        [SerializeField] private string walkForwardState = "WalkForward";
+        [SerializeField] private string walkBackwardState = "WalkBackward";
+        [SerializeField] private string dashState = "Dash";
+        [SerializeField] private string runState = "Run";
+        [SerializeField] private string backDashState = "BackDash";
+        [SerializeField] private string jumpSquatState = "JumpSquat";
+        [SerializeField] private string airborneState = "Airborne";
+        [SerializeField] private string landingState = "Landing";
+        
+        [Header("朝向表现")]
+        [Tooltip("RotateY: 3D 模型用（负缩放会翻转蒙皮法线）。MirrorScaleX: 2D 骨骼/精灵用")]
+        [SerializeField] private FacingStyle facingStyle = FacingStyle.RotateY;
+        [Tooltip("面朝右(+X)时的 Y 旋转。模型前向是局部 Z 时通常为 90")]
+        [SerializeField] private float facingRightYaw = 90f;
+        [Tooltip("面朝左(-X)时的 Y 旋转")]
+        [SerializeField] private float facingLeftYaw = 270f;
+        
+        public enum FacingStyle : byte
+        {
+            RotateY,      // 3D 蒙皮模型：绕 Y 旋转
+            MirrorScaleX, // 2D 骨骼/精灵：X 负缩放镜像
+        }
+        
+        private BattleLoop loop;
+        private FighterState fighter;
+        
+        public void Bind(BattleLoop battleLoop, FighterState fighterState)
+        {
+            loop = battleLoop;
+            fighter = fighterState;
+ 
+            if (animator == null)
+                animator = GetComponentInChildren<Animator>();
+ 
+            // 位置权威在逻辑侧，Animator 驱动位置会与之打架
+            if (animator != null && animator.applyRootMotion)
+            {
+                animator.applyRootMotion = false;
+                Debug.LogWarning($"[FighterView] {name} 的 Apply Root Motion 已被强制关闭：" +
+                                 "位置权威属于 FighterState，动画只是显示器。", this);
+            }
+        }
         
         private int lastSeenFrame = -1;
         private Vector2 prevPosition;    // 上一逻辑帧位置（插值起点）
         private Vector2 currentPosition; // 当前逻辑帧位置（插值终点）
         private int playingStateHash;    // 当前播放的非招式状态，避免重复 CrossFade
-        private FighterState fighter;
-        private IFighterDefinitionRepository fighterDefinitionRepository;
-
-        private void Start()
-        {
-            fighterDefinitionRepository = new ExampleFighterDefinitionRepository();
-            fighter = BuildPlayer("EXAMPLE_SHOTO", inputController, fighterDefinitionRepository.Get("EXAMPLE_SHOTO"), new Vector2(-1.0f, -.2f));
-            inputController.Ticked += fighter.Tick;
-        }
-
-        private void OnDestroy()
-        {
-            inputController.Ticked -= fighter.Tick;
-        }
 
         private void LateUpdate()
         {
-            if (inputController.CurrentFrame != lastSeenFrame)
+            if (fighter == null || loop == null) return;
+            if (loop.CurrentFrame != lastSeenFrame)
             {
-                int elapsed = inputController.CurrentFrame - lastSeenFrame;
+                int elapsed = loop.CurrentFrame - lastSeenFrame;
                 // 正常推进 1 帧：旧终点变新起点；卡顿跨了多帧：直接跳，不做穿越插值
                 prevPosition = (elapsed == 1 && lastSeenFrame >= 0) ? currentPosition : fighter.Position;
                 currentPosition = fighter.Position;
-                lastSeenFrame = inputController.CurrentFrame;
+                lastSeenFrame = loop.CurrentFrame;
  
                 SyncAnimation(fighter);
             }
-            
-            Vector2 rendered = Vector2.Lerp(prevPosition, currentPosition, inputController.InterpolationAlpha);
+ 
+            // ---- 位置：两个逻辑帧之间按累加器进度插值 ----
+            Vector2 rendered = Vector2.Lerp(prevPosition, currentPosition, loop.InterpolationAlpha);
             transform.position = new Vector3(rendered.x, rendered.y, transform.position.z);
  
-            // ---- 朝向：镜像缩放（2D 骨骼/精灵通用；3D 模型可改为绕 Y 轴旋转 180°）----
-            Vector3 scale = transform.localScale;
-            scale.x = Mathf.Abs(scale.x) * (fighter.FacingRight ? 1f : -1f);
-            transform.localScale = scale;
+            // ---- 朝向 ----
+            if (facingStyle == FacingStyle.RotateY)
+            {
+                // 3D 蒙皮模型：绕 Y 旋转。你的模型前向是局部 Z、以 Y=90° 对齐战斗平面(+X)，
+                // 面朝左即转到 270°。负缩放镜像会翻转蒙皮法线，3D 模型不可用
+                transform.rotation = Quaternion.Euler(
+                    0f, fighter.FacingRight ? facingRightYaw : facingLeftYaw, 0f);
+            }
+            else
+            {
+                // 2D 骨骼/精灵：X 负缩放镜像
+                Vector3 scale = transform.localScale;
+                scale.x = Mathf.Abs(scale.x) * (fighter.FacingRight ? 1f : -1f);
+                transform.localScale = scale;
+            }
         }
          private void SyncAnimation(FighterState _fighter)
         {
@@ -80,8 +123,30 @@ namespace Domain.Infrastructure.Battle
                     break;
  
                 default:
-                    PlayLoose(idleState);
+                    PlayLoose(MovementStateName(_fighter.Movement.State));
                     break;
+            }
+        }
+         
+        /// <summary>
+        /// 移动状态 → Animator State 名。这些也需要在 AC 里建同名 State。
+        /// 移动动画不需要帧精确（不像招式），所以用 CrossFade 平滑过渡即可。
+        /// </summary>
+        private string MovementStateName(MovementState state)
+        {
+            switch (state)
+            {
+                case MovementState.WalkForward:  return walkForwardState;
+                case MovementState.WalkBackward: return walkBackwardState;
+                case MovementState.DashStartup:
+                case MovementState.Dashing:      return dashState;
+                case MovementState.Running:      return runState;
+                case MovementState.DashRecovery: return idleState;
+                case MovementState.BackDash:     return backDashState;
+                case MovementState.JumpSquat:    return jumpSquatState;
+                case MovementState.Airborne:     return airborneState;
+                case MovementState.Landing:      return landingState;
+                default:                         return idleState;
             }
         }
  
@@ -118,25 +183,6 @@ namespace Domain.Infrastructure.Battle
             }
             moveStateHashCache[moveId] = hash;
             return hash;
-        }
-        
-        private FighterState BuildPlayer( string name,
-            FightingInputController input, FighterDefinition definition,
-            Vector2 position)
-        {
-            // 用仓库数据装配检测器与角色（定义是共享只读配置，可安全用于双方）
-            foreach (MotionPattern motion in definition.Motions)
-                input.Detector.Add(motion);
- 
-            // 招式表：指令 → 招式的解析层（连招规则在这里）
-            var moveTable = new MoveTable();
-            moveTable.AddRange(definition.MoveEntries);
- 
-            var fighter = new FighterState(input, moveTable) { Name = name, Position = position };
-            foreach (MoveData move in definition.Moves)
-                fighter.AddMove(move);
-            
-            return fighter;
         }
     }
 }

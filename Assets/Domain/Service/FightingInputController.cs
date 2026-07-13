@@ -16,7 +16,6 @@ namespace Domain.Service
         private const float TickDelta = 1f / TickRate;
         private const float MaxAccumulated = 0.25f;
         private float accumulator;
-        public float InterpolationAlpha => accumulator / TickDelta;
         
         [Header("Character")]
         public bool FacingRight = true;
@@ -27,10 +26,17 @@ namespace Domain.Service
         public event Action<int> Ticked = delegate { };
         public InputBuffer Buffer => inputAssets.Buffer;
         public int CurrentFrame => inputAssets.CurrentFrame;
+        
+        [SerializeField] private bool selfDriven = true;
+
+        public bool SelfDriven
+        {
+            get => selfDriven;
+            set => selfDriven = value;
+        }
 
         private void Awake()
         {
-            Application.targetFrameRate = TickRate;
             inputAssets.Initialize();
         }
 
@@ -41,20 +47,21 @@ namespace Domain.Service
 
         private void OnEnable()
         {
-            inputAssets.GameplayActions.Enable();
             inputAssets.FrameSampled += Log;
             inputAssets.LogicTick += GamePlayLogicTick;
         }
 
         private void OnDisable()
         {
-            inputAssets.GameplayActions.Disable();
             inputAssets.FrameSampled -= Log;
             inputAssets.LogicTick -= GamePlayLogicTick;
         }
 
+        public void ManualTick() => inputAssets.GamePlayInputTick();
+
         private void Update()
         {
+            if (!selfDriven) return;
             accumulator += Time.deltaTime;
             if (accumulator > MaxAccumulated) accumulator = MaxAccumulated;
 

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Domain.Infrastructure.Auto;
 using Domain.Infrastructure.Input;
 using Domain.Infrastructure.Motion;
 using UnityEngine;
@@ -21,6 +22,8 @@ namespace Domain.Infrastructure.Battle
  
         /// <summary>战斗层：招式的帧数据（MoveData.MoveId = 招式名 = Animation Clip 名）</summary>
         public MoveData[] Moves = Array.Empty<MoveData>();
+        
+        public MovementConfig Movement = new MovementConfig();
     }
  
     /// <summary>
@@ -44,12 +47,17 @@ namespace Domain.Infrastructure.Battle
         private readonly Dictionary<string, FighterDefinition> cache =
             new Dictionary<string, FighterDefinition>();
  
+        private readonly BoxDataLoader boxLoader = new BoxDataLoader();
+        
         public FighterDefinition Get(string characterId)
         {
             if (cache.TryGetValue(characterId, out FighterDefinition def))
                 return def;
  
             def = Build(characterId);
+            CharacterBoxData boxes = boxLoader.Load(characterId);
+            boxLoader.Apply(boxes, def.Moves);
+
             cache[characterId] = def;
             return def;
         }
@@ -58,7 +66,7 @@ namespace Domain.Infrastructure.Battle
         {
             switch (characterId)
             {
-                case "EXAMPLE_SHOTO": return BuildShoto();
+                case "Frank": return BuildShoto();
                 default:
                     throw new ArgumentException($"未知角色: {characterId}");
             }
@@ -70,7 +78,7 @@ namespace Domain.Infrastructure.Battle
  
             return new FighterDefinition
             {
-                CharacterId = "EXAMPLE_SHOTO",
+                CharacterId = "Frank",
  
                 // 搓招指令表。注意 MotionPattern.Id 是【指令名】，不是招式名——
                 // 236P 这一个指令，下面的招式表会按 LP/MP/HP 解析成三个不同招式。
@@ -84,7 +92,8 @@ namespace Domain.Infrastructure.Battle
                 MoveEntries = new[]
                 {
                     // --- 普通技：同一按键，姿态决定招式（站/蹲各一套动画）---
-                    new MoveEntry { Buttons = ButtonMask.LP, Stance = Stance.Standing,  MoveId = "Frank_FS4_Attack_Punch_L_02", Priority = 0 },
+                    new MoveEntry { Buttons = ButtonMask.LP, Stance = Stance.Standing,  MoveId = "Frank_FS4_Attack_Punch_L_02", Priority = 10 },
+                    new MoveEntry { Buttons = ButtonMask.LK, Stance = Stance.Standing, MoveId = "Frank_FS4_Attack_Kick_L_02", Priority = 10}
                 },
  
                 Moves = new[]
@@ -96,13 +105,20 @@ namespace Domain.Infrastructure.Battle
                         Startup = 10, Active = 2, Recovery = 28,
                         Attributes = AttackAttribute.Strike | AttackAttribute.Mid,
                         Damage = 30, HitstunFrames = 11, BlockstunFrames = 8,
-                        RootMotion = MoveData.MotionFromSpans(40, (3,10, new Vector2(0.25f/7, 0f))),
+                        RootMotion = FrankRootMotion.Get("Frank_FS4_Attack_Punch_L_02"),
                         CancelFrom = 5, // 命中后从判定帧起可取消 → 连招
-                        Hitboxes = new[]
-                        {
-                            new BoxSpan { FromFrame = 10, ToFrame = 12, Box = new Box(0.55f, 1.1f, 0.7f, 0.3f) },
-                        },
                     },
+                    new MoveData
+                    {
+                        // 粘贴后可按手感手调；帧数据是权威，动画服从它。
+                        RootMotion = FrankRootMotion.Get("Frank_FS4_Attack_Kick_L_02"),
+                        MoveId = "Frank_FS4_Attack_Kick_L_02",
+                        Startup = 16, Active = 4, Recovery = 34,
+                        Attributes = AttackAttribute.Strike | AttackAttribute.Mid,
+                        Damage = 30, HitstunFrames = 17, BlockstunFrames = 8,
+                        CancelFrom = 5, // 命中后从判定帧起可取消 → 连招
+
+                    }
                 },
             };
         }

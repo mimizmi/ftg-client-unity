@@ -401,6 +401,390 @@ namespace Domain.Infrastructure
                     ""isPartOfComposite"": true
                 }
             ]
+        },
+        {
+            ""name"": ""p1"",
+            ""id"": ""36222505-61a3-4415-addc-618e885d4f6c"",
+            ""actions"": [
+                {
+                    ""name"": ""LK"",
+                    ""type"": ""Button"",
+                    ""id"": ""b9b3cde3-5bdb-4997-8fdf-0e97d2621bee"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""HK"",
+                    ""type"": ""Button"",
+                    ""id"": ""d6eba409-c4d5-4c82-b8b2-883dea91e6ed"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""MK"",
+                    ""type"": ""Button"",
+                    ""id"": ""acc06758-dfd6-4088-bf53-3e3b11e84191"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""LP"",
+                    ""type"": ""Button"",
+                    ""id"": ""3c2956fd-4bdf-46a7-878b-1b7a14203278"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""HP"",
+                    ""type"": ""Button"",
+                    ""id"": ""5adada24-65f0-4bd6-b50b-5df8c5dc46cf"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""MP"",
+                    ""type"": ""Button"",
+                    ""id"": ""8a02eec7-33c4-4825-b131-85772af4d7ab"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""Move"",
+                    ""type"": ""Value"",
+                    ""id"": ""80e1221f-9f29-4d06-b4b9-e4b71c4cacb9"",
+                    ""expectedControlType"": ""Vector2"",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": true
+                }
+            ],
+            ""bindings"": [
+                {
+                    ""name"": """",
+                    ""id"": ""c09dd4c4-12dd-43c6-95a1-2c95e24f85fd"",
+                    ""path"": ""<Keyboard>/u"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""LK"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""c8ea0402-66a1-4a3a-bbb3-db60dbaaa4b6"",
+                    ""path"": ""<Keyboard>/o"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""HK"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""da6dabf0-1c3d-4d1e-ac8c-572eddd672fd"",
+                    ""path"": ""<Keyboard>/i"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""MK"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""1181d20f-5df9-487d-a0d8-6f20013f40d1"",
+                    ""path"": ""<Keyboard>/j"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""LP"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""96e3f27d-f838-432b-a7e8-57c2ea48dbe2"",
+                    ""path"": ""<Keyboard>/l"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""HP"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""36184c99-1126-4618-8723-2741661ee9a5"",
+                    ""path"": ""<Keyboard>/k"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""MP"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": ""WASD"",
+                    ""id"": ""7fd249a5-cde6-463f-9f00-f88a3c2f9330"",
+                    ""path"": ""2DVector(mode=1)"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Move"",
+                    ""isComposite"": true,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": ""up"",
+                    ""id"": ""0dc1cd47-130a-4a19-9537-2eb7be1cdfb6"",
+                    ""path"": ""<Keyboard>/w"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Move"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": true
+                },
+                {
+                    ""name"": ""down"",
+                    ""id"": ""40df1a6e-ae92-4189-b510-0de60f1a6f05"",
+                    ""path"": ""<Keyboard>/s"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Move"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": true
+                },
+                {
+                    ""name"": ""left"",
+                    ""id"": ""de71554d-89e1-467d-9f9b-208f86142650"",
+                    ""path"": ""<Keyboard>/a"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Move"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": true
+                },
+                {
+                    ""name"": ""right"",
+                    ""id"": ""8209f89f-26fc-465f-9619-002bbf139e41"",
+                    ""path"": ""<Keyboard>/d"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Move"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": true
+                }
+            ]
+        },
+        {
+            ""name"": ""p2"",
+            ""id"": ""3c51cfcb-5f64-489b-a936-17e1867920eb"",
+            ""actions"": [
+                {
+                    ""name"": ""LK"",
+                    ""type"": ""Button"",
+                    ""id"": ""dbc106fc-6157-4a99-91cd-b67aded8e492"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""HK"",
+                    ""type"": ""Button"",
+                    ""id"": ""0c356e84-8b4e-4426-be6d-2d240eb0f55c"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""MK"",
+                    ""type"": ""Button"",
+                    ""id"": ""d088aad7-d9ab-49ee-9f27-f75f75d33170"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""LP"",
+                    ""type"": ""Button"",
+                    ""id"": ""2e36008e-955b-4b58-98e3-b296a35da6dd"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""HP"",
+                    ""type"": ""Button"",
+                    ""id"": ""3899473b-27f1-4d08-8b99-2a80079367f1"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""MP"",
+                    ""type"": ""Button"",
+                    ""id"": ""71018a15-33f0-4c8d-a1bc-02a216b36035"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""Move"",
+                    ""type"": ""Value"",
+                    ""id"": ""2b601155-9b8a-4306-87e8-6c248dd7c839"",
+                    ""expectedControlType"": ""Vector2"",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": true
+                }
+            ],
+            ""bindings"": [
+                {
+                    ""name"": """",
+                    ""id"": ""e54701dd-6f54-4280-8e94-2f302e10bbb4"",
+                    ""path"": ""<Keyboard>/numpad4"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""LK"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""ac1d2546-56c1-4576-a375-474cb41b2425"",
+                    ""path"": ""<Keyboard>/numpad6"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""HK"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""f91fae07-c1b5-49c7-a7f0-407e19b99794"",
+                    ""path"": ""<Keyboard>/numpad5"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""MK"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""f1a14084-1f60-4233-ad89-4cfab13433d3"",
+                    ""path"": ""<Keyboard>/numpad1"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""LP"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""8eb8bc35-b7f4-417b-b4b3-f02ed02ca417"",
+                    ""path"": ""<Keyboard>/numpad3"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""HP"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""b2c7a389-705d-4690-806e-94d5758252f2"",
+                    ""path"": ""<Keyboard>/numpad2"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""MP"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": ""Arrow"",
+                    ""id"": ""01fe7ce3-5514-4464-9eea-fb4486a87b78"",
+                    ""path"": ""2DVector(mode=1)"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Move"",
+                    ""isComposite"": true,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": ""up"",
+                    ""id"": ""5a676dad-b81a-4d6f-9004-0a9593d9d82b"",
+                    ""path"": ""<Keyboard>/upArrow"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Move"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": true
+                },
+                {
+                    ""name"": ""down"",
+                    ""id"": ""529bd68d-90ab-477e-a6f9-edbbfb610d95"",
+                    ""path"": ""<Keyboard>/downArrow"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Move"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": true
+                },
+                {
+                    ""name"": ""left"",
+                    ""id"": ""fa0a037d-0775-405b-9268-c6ba8030abed"",
+                    ""path"": ""<Keyboard>/leftArrow"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Move"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": true
+                },
+                {
+                    ""name"": ""right"",
+                    ""id"": ""fab8a0ca-4703-4caa-9a68-db2cfe4d32c2"",
+                    ""path"": ""<Keyboard>/rightArrow"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Move"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": true
+                }
+            ]
         }
     ],
     ""controlSchemes"": []
@@ -414,11 +798,31 @@ namespace Domain.Infrastructure
             m_gameplay_HP = m_gameplay.FindAction("HP", throwIfNotFound: true);
             m_gameplay_MP = m_gameplay.FindAction("MP", throwIfNotFound: true);
             m_gameplay_Move = m_gameplay.FindAction("Move", throwIfNotFound: true);
+            // p1
+            m_p1 = asset.FindActionMap("p1", throwIfNotFound: true);
+            m_p1_LK = m_p1.FindAction("LK", throwIfNotFound: true);
+            m_p1_HK = m_p1.FindAction("HK", throwIfNotFound: true);
+            m_p1_MK = m_p1.FindAction("MK", throwIfNotFound: true);
+            m_p1_LP = m_p1.FindAction("LP", throwIfNotFound: true);
+            m_p1_HP = m_p1.FindAction("HP", throwIfNotFound: true);
+            m_p1_MP = m_p1.FindAction("MP", throwIfNotFound: true);
+            m_p1_Move = m_p1.FindAction("Move", throwIfNotFound: true);
+            // p2
+            m_p2 = asset.FindActionMap("p2", throwIfNotFound: true);
+            m_p2_LK = m_p2.FindAction("LK", throwIfNotFound: true);
+            m_p2_HK = m_p2.FindAction("HK", throwIfNotFound: true);
+            m_p2_MK = m_p2.FindAction("MK", throwIfNotFound: true);
+            m_p2_LP = m_p2.FindAction("LP", throwIfNotFound: true);
+            m_p2_HP = m_p2.FindAction("HP", throwIfNotFound: true);
+            m_p2_MP = m_p2.FindAction("MP", throwIfNotFound: true);
+            m_p2_Move = m_p2.FindAction("Move", throwIfNotFound: true);
         }
 
         ~@FTGActions()
         {
             UnityEngine.Debug.Assert(!m_gameplay.enabled, "This will cause a leak and performance issues, FTGActions.gameplay.Disable() has not been called.");
+            UnityEngine.Debug.Assert(!m_p1.enabled, "This will cause a leak and performance issues, FTGActions.p1.Disable() has not been called.");
+            UnityEngine.Debug.Assert(!m_p2.enabled, "This will cause a leak and performance issues, FTGActions.p2.Disable() has not been called.");
         }
 
         /// <summary>
@@ -652,12 +1056,450 @@ namespace Domain.Infrastructure
         /// Provides a new <see cref="GameplayActions" /> instance referencing this action map.
         /// </summary>
         public GameplayActions @gameplay => new GameplayActions(this);
+
+        // p1
+        private readonly InputActionMap m_p1;
+        private List<IP1Actions> m_P1ActionsCallbackInterfaces = new List<IP1Actions>();
+        private readonly InputAction m_p1_LK;
+        private readonly InputAction m_p1_HK;
+        private readonly InputAction m_p1_MK;
+        private readonly InputAction m_p1_LP;
+        private readonly InputAction m_p1_HP;
+        private readonly InputAction m_p1_MP;
+        private readonly InputAction m_p1_Move;
+        /// <summary>
+        /// Provides access to input actions defined in input action map "p1".
+        /// </summary>
+        public struct P1Actions
+        {
+            private @FTGActions m_Wrapper;
+
+            /// <summary>
+            /// Construct a new instance of the input action map wrapper class.
+            /// </summary>
+            public P1Actions(@FTGActions wrapper) { m_Wrapper = wrapper; }
+            /// <summary>
+            /// Provides access to the underlying input action "p1/LK".
+            /// </summary>
+            public InputAction @LK => m_Wrapper.m_p1_LK;
+            /// <summary>
+            /// Provides access to the underlying input action "p1/HK".
+            /// </summary>
+            public InputAction @HK => m_Wrapper.m_p1_HK;
+            /// <summary>
+            /// Provides access to the underlying input action "p1/MK".
+            /// </summary>
+            public InputAction @MK => m_Wrapper.m_p1_MK;
+            /// <summary>
+            /// Provides access to the underlying input action "p1/LP".
+            /// </summary>
+            public InputAction @LP => m_Wrapper.m_p1_LP;
+            /// <summary>
+            /// Provides access to the underlying input action "p1/HP".
+            /// </summary>
+            public InputAction @HP => m_Wrapper.m_p1_HP;
+            /// <summary>
+            /// Provides access to the underlying input action "p1/MP".
+            /// </summary>
+            public InputAction @MP => m_Wrapper.m_p1_MP;
+            /// <summary>
+            /// Provides access to the underlying input action "p1/Move".
+            /// </summary>
+            public InputAction @Move => m_Wrapper.m_p1_Move;
+            /// <summary>
+            /// Provides access to the underlying input action map instance.
+            /// </summary>
+            public InputActionMap Get() { return m_Wrapper.m_p1; }
+            /// <inheritdoc cref="UnityEngine.InputSystem.InputActionMap.Enable()" />
+            public void Enable() { Get().Enable(); }
+            /// <inheritdoc cref="UnityEngine.InputSystem.InputActionMap.Disable()" />
+            public void Disable() { Get().Disable(); }
+            /// <inheritdoc cref="UnityEngine.InputSystem.InputActionMap.enabled" />
+            public bool enabled => Get().enabled;
+            /// <summary>
+            /// Implicitly converts an <see ref="P1Actions" /> to an <see ref="InputActionMap" /> instance.
+            /// </summary>
+            public static implicit operator InputActionMap(P1Actions set) { return set.Get(); }
+            /// <summary>
+            /// Adds <see cref="InputAction.started"/>, <see cref="InputAction.performed"/> and <see cref="InputAction.canceled"/> callbacks provided via <param cref="instance" /> on all input actions contained in this map.
+            /// </summary>
+            /// <param name="instance">Callback instance.</param>
+            /// <remarks>
+            /// If <paramref name="instance" /> is <c>null</c> or <paramref name="instance"/> have already been added this method does nothing.
+            /// </remarks>
+            /// <seealso cref="P1Actions" />
+            public void AddCallbacks(IP1Actions instance)
+            {
+                if (instance == null || m_Wrapper.m_P1ActionsCallbackInterfaces.Contains(instance)) return;
+                m_Wrapper.m_P1ActionsCallbackInterfaces.Add(instance);
+                @LK.started += instance.OnLK;
+                @LK.performed += instance.OnLK;
+                @LK.canceled += instance.OnLK;
+                @HK.started += instance.OnHK;
+                @HK.performed += instance.OnHK;
+                @HK.canceled += instance.OnHK;
+                @MK.started += instance.OnMK;
+                @MK.performed += instance.OnMK;
+                @MK.canceled += instance.OnMK;
+                @LP.started += instance.OnLP;
+                @LP.performed += instance.OnLP;
+                @LP.canceled += instance.OnLP;
+                @HP.started += instance.OnHP;
+                @HP.performed += instance.OnHP;
+                @HP.canceled += instance.OnHP;
+                @MP.started += instance.OnMP;
+                @MP.performed += instance.OnMP;
+                @MP.canceled += instance.OnMP;
+                @Move.started += instance.OnMove;
+                @Move.performed += instance.OnMove;
+                @Move.canceled += instance.OnMove;
+            }
+
+            /// <summary>
+            /// Removes <see cref="InputAction.started"/>, <see cref="InputAction.performed"/> and <see cref="InputAction.canceled"/> callbacks provided via <param cref="instance" /> on all input actions contained in this map.
+            /// </summary>
+            /// <remarks>
+            /// Calling this method when <paramref name="instance" /> have not previously been registered has no side-effects.
+            /// </remarks>
+            /// <seealso cref="P1Actions" />
+            private void UnregisterCallbacks(IP1Actions instance)
+            {
+                @LK.started -= instance.OnLK;
+                @LK.performed -= instance.OnLK;
+                @LK.canceled -= instance.OnLK;
+                @HK.started -= instance.OnHK;
+                @HK.performed -= instance.OnHK;
+                @HK.canceled -= instance.OnHK;
+                @MK.started -= instance.OnMK;
+                @MK.performed -= instance.OnMK;
+                @MK.canceled -= instance.OnMK;
+                @LP.started -= instance.OnLP;
+                @LP.performed -= instance.OnLP;
+                @LP.canceled -= instance.OnLP;
+                @HP.started -= instance.OnHP;
+                @HP.performed -= instance.OnHP;
+                @HP.canceled -= instance.OnHP;
+                @MP.started -= instance.OnMP;
+                @MP.performed -= instance.OnMP;
+                @MP.canceled -= instance.OnMP;
+                @Move.started -= instance.OnMove;
+                @Move.performed -= instance.OnMove;
+                @Move.canceled -= instance.OnMove;
+            }
+
+            /// <summary>
+            /// Unregisters <param cref="instance" /> and unregisters all input action callbacks via <see cref="P1Actions.UnregisterCallbacks(IP1Actions)" />.
+            /// </summary>
+            /// <seealso cref="P1Actions.UnregisterCallbacks(IP1Actions)" />
+            public void RemoveCallbacks(IP1Actions instance)
+            {
+                if (m_Wrapper.m_P1ActionsCallbackInterfaces.Remove(instance))
+                    UnregisterCallbacks(instance);
+            }
+
+            /// <summary>
+            /// Replaces all existing callback instances and previously registered input action callbacks associated with them with callbacks provided via <param cref="instance" />.
+            /// </summary>
+            /// <remarks>
+            /// If <paramref name="instance" /> is <c>null</c>, calling this method will only unregister all existing callbacks but not register any new callbacks.
+            /// </remarks>
+            /// <seealso cref="P1Actions.AddCallbacks(IP1Actions)" />
+            /// <seealso cref="P1Actions.RemoveCallbacks(IP1Actions)" />
+            /// <seealso cref="P1Actions.UnregisterCallbacks(IP1Actions)" />
+            public void SetCallbacks(IP1Actions instance)
+            {
+                foreach (var item in m_Wrapper.m_P1ActionsCallbackInterfaces)
+                    UnregisterCallbacks(item);
+                m_Wrapper.m_P1ActionsCallbackInterfaces.Clear();
+                AddCallbacks(instance);
+            }
+        }
+        /// <summary>
+        /// Provides a new <see cref="P1Actions" /> instance referencing this action map.
+        /// </summary>
+        public P1Actions @p1 => new P1Actions(this);
+
+        // p2
+        private readonly InputActionMap m_p2;
+        private List<IP2Actions> m_P2ActionsCallbackInterfaces = new List<IP2Actions>();
+        private readonly InputAction m_p2_LK;
+        private readonly InputAction m_p2_HK;
+        private readonly InputAction m_p2_MK;
+        private readonly InputAction m_p2_LP;
+        private readonly InputAction m_p2_HP;
+        private readonly InputAction m_p2_MP;
+        private readonly InputAction m_p2_Move;
+        /// <summary>
+        /// Provides access to input actions defined in input action map "p2".
+        /// </summary>
+        public struct P2Actions
+        {
+            private @FTGActions m_Wrapper;
+
+            /// <summary>
+            /// Construct a new instance of the input action map wrapper class.
+            /// </summary>
+            public P2Actions(@FTGActions wrapper) { m_Wrapper = wrapper; }
+            /// <summary>
+            /// Provides access to the underlying input action "p2/LK".
+            /// </summary>
+            public InputAction @LK => m_Wrapper.m_p2_LK;
+            /// <summary>
+            /// Provides access to the underlying input action "p2/HK".
+            /// </summary>
+            public InputAction @HK => m_Wrapper.m_p2_HK;
+            /// <summary>
+            /// Provides access to the underlying input action "p2/MK".
+            /// </summary>
+            public InputAction @MK => m_Wrapper.m_p2_MK;
+            /// <summary>
+            /// Provides access to the underlying input action "p2/LP".
+            /// </summary>
+            public InputAction @LP => m_Wrapper.m_p2_LP;
+            /// <summary>
+            /// Provides access to the underlying input action "p2/HP".
+            /// </summary>
+            public InputAction @HP => m_Wrapper.m_p2_HP;
+            /// <summary>
+            /// Provides access to the underlying input action "p2/MP".
+            /// </summary>
+            public InputAction @MP => m_Wrapper.m_p2_MP;
+            /// <summary>
+            /// Provides access to the underlying input action "p2/Move".
+            /// </summary>
+            public InputAction @Move => m_Wrapper.m_p2_Move;
+            /// <summary>
+            /// Provides access to the underlying input action map instance.
+            /// </summary>
+            public InputActionMap Get() { return m_Wrapper.m_p2; }
+            /// <inheritdoc cref="UnityEngine.InputSystem.InputActionMap.Enable()" />
+            public void Enable() { Get().Enable(); }
+            /// <inheritdoc cref="UnityEngine.InputSystem.InputActionMap.Disable()" />
+            public void Disable() { Get().Disable(); }
+            /// <inheritdoc cref="UnityEngine.InputSystem.InputActionMap.enabled" />
+            public bool enabled => Get().enabled;
+            /// <summary>
+            /// Implicitly converts an <see ref="P2Actions" /> to an <see ref="InputActionMap" /> instance.
+            /// </summary>
+            public static implicit operator InputActionMap(P2Actions set) { return set.Get(); }
+            /// <summary>
+            /// Adds <see cref="InputAction.started"/>, <see cref="InputAction.performed"/> and <see cref="InputAction.canceled"/> callbacks provided via <param cref="instance" /> on all input actions contained in this map.
+            /// </summary>
+            /// <param name="instance">Callback instance.</param>
+            /// <remarks>
+            /// If <paramref name="instance" /> is <c>null</c> or <paramref name="instance"/> have already been added this method does nothing.
+            /// </remarks>
+            /// <seealso cref="P2Actions" />
+            public void AddCallbacks(IP2Actions instance)
+            {
+                if (instance == null || m_Wrapper.m_P2ActionsCallbackInterfaces.Contains(instance)) return;
+                m_Wrapper.m_P2ActionsCallbackInterfaces.Add(instance);
+                @LK.started += instance.OnLK;
+                @LK.performed += instance.OnLK;
+                @LK.canceled += instance.OnLK;
+                @HK.started += instance.OnHK;
+                @HK.performed += instance.OnHK;
+                @HK.canceled += instance.OnHK;
+                @MK.started += instance.OnMK;
+                @MK.performed += instance.OnMK;
+                @MK.canceled += instance.OnMK;
+                @LP.started += instance.OnLP;
+                @LP.performed += instance.OnLP;
+                @LP.canceled += instance.OnLP;
+                @HP.started += instance.OnHP;
+                @HP.performed += instance.OnHP;
+                @HP.canceled += instance.OnHP;
+                @MP.started += instance.OnMP;
+                @MP.performed += instance.OnMP;
+                @MP.canceled += instance.OnMP;
+                @Move.started += instance.OnMove;
+                @Move.performed += instance.OnMove;
+                @Move.canceled += instance.OnMove;
+            }
+
+            /// <summary>
+            /// Removes <see cref="InputAction.started"/>, <see cref="InputAction.performed"/> and <see cref="InputAction.canceled"/> callbacks provided via <param cref="instance" /> on all input actions contained in this map.
+            /// </summary>
+            /// <remarks>
+            /// Calling this method when <paramref name="instance" /> have not previously been registered has no side-effects.
+            /// </remarks>
+            /// <seealso cref="P2Actions" />
+            private void UnregisterCallbacks(IP2Actions instance)
+            {
+                @LK.started -= instance.OnLK;
+                @LK.performed -= instance.OnLK;
+                @LK.canceled -= instance.OnLK;
+                @HK.started -= instance.OnHK;
+                @HK.performed -= instance.OnHK;
+                @HK.canceled -= instance.OnHK;
+                @MK.started -= instance.OnMK;
+                @MK.performed -= instance.OnMK;
+                @MK.canceled -= instance.OnMK;
+                @LP.started -= instance.OnLP;
+                @LP.performed -= instance.OnLP;
+                @LP.canceled -= instance.OnLP;
+                @HP.started -= instance.OnHP;
+                @HP.performed -= instance.OnHP;
+                @HP.canceled -= instance.OnHP;
+                @MP.started -= instance.OnMP;
+                @MP.performed -= instance.OnMP;
+                @MP.canceled -= instance.OnMP;
+                @Move.started -= instance.OnMove;
+                @Move.performed -= instance.OnMove;
+                @Move.canceled -= instance.OnMove;
+            }
+
+            /// <summary>
+            /// Unregisters <param cref="instance" /> and unregisters all input action callbacks via <see cref="P2Actions.UnregisterCallbacks(IP2Actions)" />.
+            /// </summary>
+            /// <seealso cref="P2Actions.UnregisterCallbacks(IP2Actions)" />
+            public void RemoveCallbacks(IP2Actions instance)
+            {
+                if (m_Wrapper.m_P2ActionsCallbackInterfaces.Remove(instance))
+                    UnregisterCallbacks(instance);
+            }
+
+            /// <summary>
+            /// Replaces all existing callback instances and previously registered input action callbacks associated with them with callbacks provided via <param cref="instance" />.
+            /// </summary>
+            /// <remarks>
+            /// If <paramref name="instance" /> is <c>null</c>, calling this method will only unregister all existing callbacks but not register any new callbacks.
+            /// </remarks>
+            /// <seealso cref="P2Actions.AddCallbacks(IP2Actions)" />
+            /// <seealso cref="P2Actions.RemoveCallbacks(IP2Actions)" />
+            /// <seealso cref="P2Actions.UnregisterCallbacks(IP2Actions)" />
+            public void SetCallbacks(IP2Actions instance)
+            {
+                foreach (var item in m_Wrapper.m_P2ActionsCallbackInterfaces)
+                    UnregisterCallbacks(item);
+                m_Wrapper.m_P2ActionsCallbackInterfaces.Clear();
+                AddCallbacks(instance);
+            }
+        }
+        /// <summary>
+        /// Provides a new <see cref="P2Actions" /> instance referencing this action map.
+        /// </summary>
+        public P2Actions @p2 => new P2Actions(this);
         /// <summary>
         /// Interface to implement callback methods for all input action callbacks associated with input actions defined by "gameplay" which allows adding and removing callbacks.
         /// </summary>
         /// <seealso cref="GameplayActions.AddCallbacks(IGameplayActions)" />
         /// <seealso cref="GameplayActions.RemoveCallbacks(IGameplayActions)" />
         public interface IGameplayActions
+        {
+            /// <summary>
+            /// Method invoked when associated input action "LK" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+            /// </summary>
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+            void OnLK(InputAction.CallbackContext context);
+            /// <summary>
+            /// Method invoked when associated input action "HK" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+            /// </summary>
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+            void OnHK(InputAction.CallbackContext context);
+            /// <summary>
+            /// Method invoked when associated input action "MK" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+            /// </summary>
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+            void OnMK(InputAction.CallbackContext context);
+            /// <summary>
+            /// Method invoked when associated input action "LP" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+            /// </summary>
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+            void OnLP(InputAction.CallbackContext context);
+            /// <summary>
+            /// Method invoked when associated input action "HP" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+            /// </summary>
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+            void OnHP(InputAction.CallbackContext context);
+            /// <summary>
+            /// Method invoked when associated input action "MP" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+            /// </summary>
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+            void OnMP(InputAction.CallbackContext context);
+            /// <summary>
+            /// Method invoked when associated input action "Move" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+            /// </summary>
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+            void OnMove(InputAction.CallbackContext context);
+        }
+        /// <summary>
+        /// Interface to implement callback methods for all input action callbacks associated with input actions defined by "p1" which allows adding and removing callbacks.
+        /// </summary>
+        /// <seealso cref="P1Actions.AddCallbacks(IP1Actions)" />
+        /// <seealso cref="P1Actions.RemoveCallbacks(IP1Actions)" />
+        public interface IP1Actions
+        {
+            /// <summary>
+            /// Method invoked when associated input action "LK" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+            /// </summary>
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+            void OnLK(InputAction.CallbackContext context);
+            /// <summary>
+            /// Method invoked when associated input action "HK" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+            /// </summary>
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+            void OnHK(InputAction.CallbackContext context);
+            /// <summary>
+            /// Method invoked when associated input action "MK" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+            /// </summary>
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+            void OnMK(InputAction.CallbackContext context);
+            /// <summary>
+            /// Method invoked when associated input action "LP" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+            /// </summary>
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+            void OnLP(InputAction.CallbackContext context);
+            /// <summary>
+            /// Method invoked when associated input action "HP" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+            /// </summary>
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+            void OnHP(InputAction.CallbackContext context);
+            /// <summary>
+            /// Method invoked when associated input action "MP" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+            /// </summary>
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+            void OnMP(InputAction.CallbackContext context);
+            /// <summary>
+            /// Method invoked when associated input action "Move" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+            /// </summary>
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+            /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+            void OnMove(InputAction.CallbackContext context);
+        }
+        /// <summary>
+        /// Interface to implement callback methods for all input action callbacks associated with input actions defined by "p2" which allows adding and removing callbacks.
+        /// </summary>
+        /// <seealso cref="P2Actions.AddCallbacks(IP2Actions)" />
+        /// <seealso cref="P2Actions.RemoveCallbacks(IP2Actions)" />
+        public interface IP2Actions
         {
             /// <summary>
             /// Method invoked when associated input action "LK" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.

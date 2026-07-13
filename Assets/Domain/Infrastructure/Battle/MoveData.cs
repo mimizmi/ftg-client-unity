@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Domain.Infrastructure.Battle
@@ -88,8 +89,31 @@ namespace Domain.Infrastructure.Battle
         /// </summary>
         public int CancelFrom;
  
-        /// <summary>攻击判定框（通常只在 Active 段配置）。当身/移动类招式可为空。</summary>
-        public BoxSpan[] Hitboxes = Array.Empty<BoxSpan>();
+        /// <summary>
+        /// 判定框轨道（Hit / Hurt / Push），由 HitboxEditor 可视化编辑、存为 JSON、
+        /// 运行时经 BoxDataLoader 注入。关键帧之间自动插值。
+        /// 取代了早期手写坐标的 Hitboxes 数组——判定框必须看着动画画，手写做不准。
+        /// </summary>
+        public List<BoxTrack> BoxTracks = new List<BoxTrack>();
+        
+        /// <summary>求本帧所有生效的指定类型的框。复用外部 List 避免 GC。</summary>
+        public void CollectBoxes(int moveFrame, BoxKind kind, List<Box> results)
+        {
+            results.Clear();
+            for (int i = 0; i < BoxTracks.Count; i++)
+            {
+                BoxTrack track = BoxTracks[i];
+                if (track.Kind != kind) continue;
+                if (track.TryEvaluate(moveFrame, out Box box)) results.Add(box);
+            }
+        }
+
+        public bool HasBoxes(BoxKind kind)
+        {
+            for (int i = 0; i < BoxTracks.Count; i++)
+                if (BoxTracks[i].Kind == kind) return true;
+            return false;
+        }
  
         /// <summary>
         /// 逻辑位移：招式内每帧的根位移增量，定义在"面朝右"空间，index = moveFrame - 1。
@@ -121,22 +145,7 @@ namespace Domain.Infrastructure.Battle
             if (moveFrame <= TotalFrames) return MovePhase.Recovery;
             return MovePhase.None;
         }
- 
-        /// <summary>
-        /// 手写位移的构造辅助（纯函数，无状态）：按帧区间填充每帧位移增量。
-        /// 例：MotionFromSpans(34, (1, 10, new Vector2(0.06f, 0f)))
-        ///     = 34 帧的招式，第 1~10 帧每帧前进 0.06，其余帧不动。
-        /// </summary>
-        public static Vector2[] MotionFromSpans(int totalFrames,
-            params (int from, int to, Vector2 perFrame)[] spans)
-        {
-            var motion = new Vector2[totalFrames];
-            foreach ((int from, int to, Vector2 perFrame) span in spans)
-            {
-                for (int f = span.from; f <= span.to && f <= totalFrames; f++)
-                    motion[f - 1] += span.perFrame;
-            }
-            return motion;
-        }
+        
+        
     }
 }
