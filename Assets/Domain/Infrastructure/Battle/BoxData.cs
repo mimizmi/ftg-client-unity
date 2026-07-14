@@ -104,17 +104,50 @@ namespace Domain.Infrastructure.Battle
     public sealed class MoveBoxData
     {
         public string MoveId;
+ 
+        /// <summary>总帧数 = clip 的帧数（60fps 采样下即 clip.length * 60）</summary>
         public int TotalFrames;
+ 
+        // ---- 帧分割（三段之和应等于 TotalFrames）----
+        // 攻击招式：可从 Hit 框的帧范围【自动推导】—— 你画完框，分割就有了
+        // 移动招式：手动定，且含义不同（起跳预备/落地缓冲、冲刺起步/收招）
+        public int Startup;
+        public int Active;
+        public int Recovery;
+ 
+        // ---- 无敌帧（升龙、后跃步）。0 = 无 ----
+        public int InvulnFrom;
+        public int InvulnTo;
+ 
+        /// <summary>判定框轨道</summary>
         public List<BoxTrack> Tracks = new List<BoxTrack>();
+ 
+        /// <summary>
+        /// 每帧位移增量（面朝右空间），从 clip 烘焙。
+        /// 走路/冲刺/跳跃靠它移动，招式靠它前压 —— 位移就在动画里，凭空写必然脚下打滑。
+        /// </summary>
+        public Vector2[] RootMotion;
+ 
+        public bool HasFrameSplit => Startup + Active + Recovery > 0;
     }
-
-    /// <summary>一个角色的全部招式判定框（对应一个 JSON 文件）。</summary>
+ 
+    /// <summary>一个角色的全部招式数据（对应一个 JSON 文件）。</summary>
     [Serializable]
     public sealed class CharacterBoxData
     {
+        /// <summary>
+        /// 数据格式版本。破坏性变更时递增，并在 LoadLibrary 里写迁移逻辑。
+        ///   1 = 初版：只有 Tracks（判定框）
+        ///   2 = 增加 Startup/Active/Recovery、InvulnFrom/To、RootMotion（纯增量，可直接读 v1）
+        /// 旧文件没有这个字段 → 读出来是 0 → 视为 v1。
+        /// </summary>
+        public int Version = CurrentVersion;
+ 
+        public const int CurrentVersion = 2;
+ 
         public string CharacterId;
         public List<MoveBoxData> Moves = new List<MoveBoxData>();
-
+ 
         public MoveBoxData Find(string moveId)
         {
             for (int i = 0; i < Moves.Count; i++)

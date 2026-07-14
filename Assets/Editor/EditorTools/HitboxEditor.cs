@@ -74,6 +74,11 @@ namespace Editor.EditorTools
         private static readonly Color HitColor = new Color(1f, 0.25f, 0.25f, 0.35f);
         private static readonly Color HurtColor = new Color(0.3f, 0.9f, 0.4f, 0.3f);
         private static readonly Color PushColor = new Color(0.4f, 0.6f, 1f, 0.25f);
+        
+        private static readonly Color StartupColor  = new Color(0.95f, 0.75f, 0.2f, 0.35f); // 黄=前摇
+        private static readonly Color ActiveColor   = new Color(0.95f, 0.3f, 0.3f, 0.4f);   // 红=判定
+        private static readonly Color RecoveryColor = new Color(0.35f, 0.6f, 0.95f, 0.35f); // 蓝=后摇
+        private static readonly Color InvulnColor   = new Color(1f, 1f, 1f, 0.5f);          // 白=无敌
  
         private Vector2 scroll;
  
@@ -114,6 +119,8 @@ namespace Editor.EditorTools
                 DrawViewSettings();
                 EditorGUILayout.Space();
                 DrawTimeline();
+                EditorGUILayout.Space();
+                DrawFrameData(); 
                 EditorGUILayout.Space();
                 DrawTrackList();
             }
@@ -297,16 +304,6 @@ namespace Editor.EditorTools
                 MessageType.None);
         }
  
-        private void AlignSceneView()
-        {
-            SceneView sv = SceneView.lastActiveSceneView;
-            if (sv == null) return;
- 
-            sv.LookAt(new Vector3(0.3f, 1f, 0f), Quaternion.Euler(0f, 0f, 0f), 2.5f);
-            sv.orthographic = true;
-            sv.Repaint();
-        }
- 
         private void DrawTimeline()
         {
             EditorGUILayout.LabelField($"④ 时间轴 —— {moveId}", EditorStyles.boldLabel);
@@ -328,8 +325,27 @@ namespace Editor.EditorTools
                 EditorGUILayout.LabelField($"/ {totalFrames}", GUILayout.Width(45));
             }
  
-            Rect ruler = GUILayoutUtility.GetRect(0, 22, GUILayout.ExpandWidth(true));
+            Rect ruler = GUILayoutUtility.GetRect(0, 30, GUILayout.ExpandWidth(true));
             EditorGUI.DrawRect(ruler, new Color(0.16f, 0.16f, 0.16f));
+ 
+            // ---- 相位着色：黄=前摇 红=判定 蓝=后摇。一眼看出帧分割对不对 ----
+            if (currentMove != null && currentMove.HasFrameSplit)
+            {
+                DrawPhaseBand(ruler, 1, currentMove.Startup, StartupColor);
+                DrawPhaseBand(ruler, currentMove.Startup + 1,
+                    currentMove.Startup + currentMove.Active, ActiveColor);
+                DrawPhaseBand(ruler, currentMove.Startup + currentMove.Active + 1,
+                    currentMove.TotalFrames, RecoveryColor);
+            }
+ 
+            // ---- 无敌帧：顶部一条白带 ----
+            if (currentMove != null && currentMove.InvulnTo > 0)
+            {
+                Rect top = new Rect(ruler.x, ruler.y, ruler.width, 4f);
+                DrawPhaseBand(top, currentMove.InvulnFrom, currentMove.InvulnTo, InvulnColor);
+            }
+ 
+            // ---- 关键帧标记 ----
             if (currentMove != null)
             {
                 foreach (BoxTrack track in currentMove.Tracks)
@@ -338,13 +354,26 @@ namespace Editor.EditorTools
                     c.a = 1f;
                     foreach (BoxKeyframe key in track.Keys)
                     {
-                        float x = ruler.x + ruler.width * (key.Frame - 1f) / Mathf.Max(1, totalFrames - 1);
-                        EditorGUI.DrawRect(new Rect(x - 1.5f, ruler.y + 3, 3, ruler.height - 6), c);
+                        float x = FrameToX(ruler, key.Frame);
+                        EditorGUI.DrawRect(new Rect(x - 1.5f, ruler.y + 6, 3, ruler.height - 12), c);
                     }
                 }
             }
-            float cursorX = ruler.x + ruler.width * (currentFrame - 1f) / Mathf.Max(1, totalFrames - 1);
-            EditorGUI.DrawRect(new Rect(cursorX - 1, ruler.y, 2, ruler.height), Color.white);
+ 
+            // ---- 当前帧游标 ----
+            EditorGUI.DrawRect(
+                new Rect(FrameToX(ruler, currentFrame) - 1, ruler.y, 2, ruler.height), Color.white);
+        }
+        
+        private float FrameToX(Rect rect, int frame)
+            => rect.x + rect.width * (frame - 1f) / Mathf.Max(1, totalFrames - 1);
+        
+        private void DrawPhaseBand(Rect rect, int from, int to, Color color)
+        {
+            if (to < from) return;
+            float x0 = FrameToX(rect, Mathf.Max(1, from));
+            float x1 = FrameToX(rect, Mathf.Min(totalFrames, to));
+            EditorGUI.DrawRect(new Rect(x0, rect.y, Mathf.Max(2f, x1 - x0), rect.height), color);
         }
  
         private void DrawTrackList()
@@ -451,6 +480,222 @@ namespace Editor.EditorTools
                 }
             }
         }
+        
+        
+        private void DrawFrameData()
+        {
+            EnsureCurrentMove();
+ 
+            EditorGUILayout.LabelField("⑤ 帧分割 (Startup / Active / Recovery)", EditorStyles.boldLabel);
+ 
+            // ---- 自动推导：攻击招式的 Active 段 = 有 Hit 框的帧范围 ----
+            // 你画完攻击框，帧分割就已经确定了——不需要再数一遍
+            bool hasHit = currentMove.Tracks.Exists(t => t.Kind == BoxKind.Hit && t.Keys.Count > 0);
+            using (new EditorGUI.DisabledScope(!hasHit))
+            {
+                if (GUILayout.Button(hasHit
+                        ? "从攻击框自动推导（Active = 有 Hit 框的帧范围）"
+                        : "无攻击框，无法自动推导（移动类招式请手动设置）"))
+                {
+                    DeriveFrameSplitFromHitboxes();
+                }
+            }
+ 
+            // ---- 手动设置：把当前帧设为分割点 ----
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.LabelField("把当前帧设为", GUILayout.Width(80));
+                if (GUILayout.Button($"Startup 末帧 ({currentFrame})"))
+                    SetStartupEnd(currentFrame);
+                if (GUILayout.Button($"Active 末帧 ({currentFrame})"))
+                    SetActiveEnd(currentFrame);
+            }
+ 
+            // ---- 数值精调 ----
+            EditorGUI.BeginChangeCheck();
+            int startup = EditorGUILayout.IntField("Startup (前摇)", currentMove.Startup);
+            int active = EditorGUILayout.IntField("Active (判定/腾空)", currentMove.Active);
+            int recovery = EditorGUILayout.IntField("Recovery (后摇)", currentMove.Recovery);
+            if (EditorGUI.EndChangeCheck())
+            {
+                currentMove.Startup = Mathf.Max(0, startup);
+                currentMove.Active = Mathf.Max(0, active);
+                currentMove.Recovery = Mathf.Max(0, recovery);
+                MarkDirty();
+            }
+ 
+            int sum = currentMove.Startup + currentMove.Active + currentMove.Recovery;
+            if (sum != totalFrames)
+            {
+                EditorGUILayout.HelpBox(
+                    $"三段之和 {sum} ≠ 总帧数 {totalFrames}。\n" +
+                    "帧数据是权威，动画服从它——不一致时运行期动画会被拉伸/压缩播放。",
+                    MessageType.Warning);
+                if (GUILayout.Button($"把差额 {totalFrames - sum} 补进 Recovery"))
+                {
+                    currentMove.Recovery = Mathf.Max(0, currentMove.Recovery + (totalFrames - sum));
+                    MarkDirty();
+                }
+            }
+ 
+            // ---- 无敌帧（升龙、后跃步）----
+            EditorGUILayout.Space(4);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.LabelField("无敌帧", GUILayout.Width(45));
+                EditorGUI.BeginChangeCheck();
+                currentMove.InvulnFrom = EditorGUILayout.IntField(currentMove.InvulnFrom, GUILayout.Width(40));
+                EditorGUILayout.LabelField("→", GUILayout.Width(15));
+                currentMove.InvulnTo = EditorGUILayout.IntField(currentMove.InvulnTo, GUILayout.Width(40));
+                if (EditorGUI.EndChangeCheck()) MarkDirty();
+ 
+                if (GUILayout.Button("清除", GUILayout.Width(45)))
+                {
+                    currentMove.InvulnFrom = 0;
+                    currentMove.InvulnTo = 0;
+                    MarkDirty();
+                }
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.LabelField("0 = 无（升龙 / 后跃步用）", EditorStyles.miniLabel);
+            }
+ 
+            // ---- 位移烘焙 ----
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("位移 (Root Motion)", EditorStyles.boldLabel);
+ 
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                forwardAxis = (ForwardAxis)EditorGUILayout.EnumPopup("前进轴", forwardAxis, GUILayout.Width(180));
+ 
+                if (GUILayout.Button("从当前 Clip 烘焙位移"))
+                    BakeRootMotion();
+ 
+                if (currentMove.RootMotion != null && currentMove.RootMotion.Length > 0
+                    && GUILayout.Button("清除", GUILayout.Width(45)))
+                {
+                    currentMove.RootMotion = null;
+                    MarkDirty();
+                }
+            }
+ 
+            if (currentMove.RootMotion != null && currentMove.RootMotion.Length > 0)
+            {
+                Vector2 net = Vector2.zero;
+                foreach (Vector2 d in currentMove.RootMotion) net += d;
+                EditorGUILayout.LabelField(
+                    $"已烘焙 {currentMove.RootMotion.Length} 帧　净位移 前后 {net.x:F3} / 上下 {net.y:F3}",
+                    EditorStyles.miniLabel);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(
+                    "未烘焙位移。走路/冲刺/跳跃靠它移动——位移就在动画里，" +
+                    "凭空写速度必然与动画对不上，导致脚下打滑。\n" +
+                    "3D 角色前进轴通常是 Z（看 Clip 的 Average Velocity 哪一维非零）。",
+                    MessageType.Info);
+            }
+        }
+ 
+        /// <summary>
+        /// 从攻击框推导帧分割：Active = 有 Hit 框的帧范围。
+        /// 你已经看着动画把攻击框画在了拳头伸出的那几帧上——那几帧就是判定帧，
+        /// 分割点因此是免费的，不需要再数一遍。
+        /// </summary>
+        private void DeriveFrameSplitFromHitboxes()
+        {
+            int first = int.MaxValue, last = 0;
+            foreach (BoxTrack t in currentMove.Tracks)
+            {
+                if (t.Kind != BoxKind.Hit || t.Keys.Count == 0) continue;
+                first = Mathf.Min(first, t.FromFrame);
+                last = Mathf.Max(last, t.ToFrame);
+            }
+            if (last == 0) return;
+ 
+            currentMove.Startup = first - 1;
+            currentMove.Active = last - first + 1;
+            currentMove.Recovery = totalFrames - last;
+            MarkDirty();
+ 
+            Debug.Log($"[HitboxEditor] {moveId} 帧分割推导：" +
+                      $"{currentMove.Startup} + {currentMove.Active} + {currentMove.Recovery} = {totalFrames}");
+        }
+ 
+        private void SetStartupEnd(int frame)
+        {
+            currentMove.Startup = frame;
+            // 保持总帧数不变：Active 吸收变化
+            currentMove.Active = Mathf.Max(0, totalFrames - currentMove.Startup - currentMove.Recovery);
+            MarkDirty();
+        }
+ 
+        private void SetActiveEnd(int frame)
+        {
+            int activeEnd = Mathf.Max(frame, currentMove.Startup);
+            currentMove.Active = activeEnd - currentMove.Startup;
+            currentMove.Recovery = totalFrames - activeEnd;
+            MarkDirty();
+        }
+ 
+        // ---- 位移烘焙（与 BatchRootMotionBaker 同一套采样逻辑）----
+ 
+        public enum ForwardAxis { Z, X }
+        private ForwardAxis forwardAxis = ForwardAxis.Z;
+ 
+        /// <summary>
+        /// 以 60Hz 采样当前 clip 的根位移，直接写进 JSON。
+        /// 注意：Humanoid 的根运动不写进 transform.position，只经 Animator.deltaPosition
+        /// 输出——本编辑器用的 Prefab 实例带 Animator，走 Transform 采样即可覆盖 Generic；
+        /// 若烘出全 0 且 Clip 的 Average Velocity 非零，多半是前进轴选错了。
+        /// </summary>
+        private void BakeRootMotion()
+        {
+            if (clip == null || rigPrefab == null) return;
+ 
+            GameObject sampler = Instantiate(rigPrefab);
+            try
+            {
+                sampler.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+                var deltas = new Vector2[totalFrames];
+ 
+                clip.SampleAnimation(sampler, 0f);
+                Vector3 prev = sampler.transform.position;
+ 
+                for (int f = 1; f <= totalFrames; f++)
+                {
+                    clip.SampleAnimation(sampler, (f - 1) / (float)SampleRate);
+                    Vector3 pos = sampler.transform.position;
+                    float horizontal = forwardAxis == ForwardAxis.Z
+                        ? pos.z - prev.z
+                        : pos.x - prev.x;
+                    deltas[f - 1] = new Vector2(horizontal, pos.y - prev.y);
+                    prev = pos;
+                }
+ 
+                // 按【整轴累积位移】降噪：噪声不累积，真位移会累积。
+                // 不能用固定阈值砍单帧——小位移动画（轻踢的重心前压）会被整段误杀成 0
+                float netX = 0f, netY = 0f;
+                foreach (Vector2 d in deltas) { netX += d.x; netY += d.y; }
+ 
+                const float noiseThreshold = 0.005f;
+                bool keepX = Mathf.Abs(netX) >= noiseThreshold;
+                bool keepY = Mathf.Abs(netY) >= noiseThreshold;
+ 
+                for (int i = 0; i < deltas.Length; i++)
+                    deltas[i] = new Vector2(keepX ? deltas[i].x : 0f, keepY ? deltas[i].y : 0f);
+ 
+                currentMove.RootMotion = deltas;
+                MarkDirty();
+ 
+                Debug.Log($"[HitboxEditor] {moveId} 位移烘焙完成：{totalFrames} 帧，" +
+                          $"净位移 前后 {netX:F4} / 上下 {netY:F4}" +
+                          (!keepX && !keepY ? "　⚠ 两轴均为零：检查前进轴是否选错（看 Clip 的 Average Velocity）" : ""));
+            }
+            finally
+            {
+                DestroyImmediate(sampler);
+            }
+        }
  
         private int copyFromIndex;
  
@@ -538,7 +783,11 @@ namespace Editor.EditorTools
         {
             if (previewInstance == null || currentMove == null) return;
  
+            // previewInstance 现在就摆在逻辑原点上，所以这行不用改
             Vector3 origin = previewInstance.transform.position;
+ 
+            DrawOriginMarker(origin);
+            DrawMotionPath();
  
             for (int i = 0; i < currentMove.Tracks.Count; i++)
             {
@@ -554,11 +803,45 @@ namespace Editor.EditorTools
             }
  
             Handles.BeginGUI();
-            GUI.Label(new Rect(10, 10, 400, 40),
-                $"帧 {currentFrame} / {totalFrames}   {moveId}",
+            GUI.Label(new Rect(10, 10, 460, 40),
+                $"帧 {currentFrame} / {totalFrames}   {moveId}   " +
+                $"逻辑原点 ({origin.x:F3}, {origin.y:F3})",
                 EditorStyles.whiteLargeLabel);
             Handles.EndGUI();
         }
+        
+        /// <summary>
+        /// 画出逻辑原点（角色脚下的十字）。判定框的坐标全部相对它，
+        /// 让它可见能省掉大量困惑——你能直接看到"角色的逻辑位置"往前走了多少。
+        /// </summary>
+        private static void DrawOriginMarker(Vector3 origin)
+        {
+            Handles.color = new Color(1f, 0.85f, 0.2f, 0.9f);
+            const float s = 0.12f;
+            Handles.DrawLine(origin + Vector3.left * s, origin + Vector3.right * s);
+            Handles.DrawLine(origin, origin + Vector3.up * s * 1.5f);
+            Handles.DrawWireDisc(origin, Vector3.forward, s * 0.35f);
+        }
+ 
+        /// <summary>画出整段招式的逻辑位移轨迹，一眼看出这招往前推了多少。</summary>
+        private void DrawMotionPath()
+        {
+            Vector2[] rm = currentMove?.RootMotion;
+            if (rm == null || rm.Length < 2) return;
+ 
+            Handles.color = new Color(1f, 0.85f, 0.2f, 0.35f);
+            Vector3 prev = Vector3.zero;
+            Vector2 accum = Vector2.zero;
+ 
+            for (int i = 0; i < rm.Length; i++)
+            {
+                accum += rm[i];
+                var p = new Vector3(accum.x, accum.y, 0f);
+                Handles.DrawLine(prev, p);
+                prev = p;
+            }
+        }
+
  
         private void DrawBox(Vector3 origin, Box box, Color color, bool selected, bool isKeyframe)
         {
@@ -723,8 +1006,25 @@ namespace Editor.EditorTools
             if (File.Exists(LibraryPath))
             {
                 string json = File.ReadAllText(LibraryPath);
-                CharacterBoxData loaded = JsonUtility.FromJson<CharacterBoxData>(json);
-                if (loaded != null) characterData = loaded;
+                CharacterBoxData loaded = null;
+ 
+                try
+                {
+                    loaded = JsonUtility.FromJson<CharacterBoxData>(json);
+                }
+                catch (System.Exception e)
+                {
+                    // 解析失败绝不能静默——否则接下来的保存会用空数据覆盖掉整个文件
+                    EditorUtility.DisplayDialog("加载失败",
+                        $"JSON 解析出错，为避免覆盖，编辑器不会加载这个文件：\n{e.Message}\n\n" +
+                        $"文件：{LibraryPath}", "好");
+                    return;
+                }
+ 
+                if (loaded != null)
+                {
+                    characterData = Migrate(loaded);
+                }
             }
  
             loadedCharacterId = characterId;
@@ -735,27 +1035,98 @@ namespace Editor.EditorTools
             if (!string.IsNullOrEmpty(moveId)) EnsureCurrentMove();
             SceneView.RepaintAll();
             Repaint();
+        } private static CharacterBoxData Migrate(CharacterBoxData data)
+        {
+            int from = data.Version; // 旧文件无此字段 → 0，视为 v1
+ 
+            if (from <= 1)
+            {
+                // v1 → v2：只是多了 Startup/Active/Recovery/Invuln/RootMotion 几个字段。
+                // JsonUtility 已把它们填成 0/null，语义上就是"尚未设置"，
+                // BoxDataLoader 见到 HasFrameSplit=false / RootMotion=null 会跳过覆盖，
+                // 代码里的值继续生效 —— 降级是优雅的，不需要转换。
+                Debug.Log($"[HitboxEditor] 检测到 v{Mathf.Max(1, from)} 数据，" +
+                          $"已按 v{CharacterBoxData.CurrentVersion} 读入" +
+                          "（判定框原样保留；帧分割与位移显示为未设置，可在编辑器里补）。");
+            }
+ 
+            if (from > CharacterBoxData.CurrentVersion)
+            {
+                EditorUtility.DisplayDialog("版本过新",
+                    $"这个文件是 v{from}，而当前编辑器只认到 v{CharacterBoxData.CurrentVersion}。\n" +
+                    "继续编辑可能丢失新版本的字段。请先更新工具。", "好");
+            }
+ 
+            data.Version = CharacterBoxData.CurrentVersion;
+            return data;
+        }
+        
+        /// <summary>
+        /// 当前帧的【逻辑原点】——把烘焙位移累加到这一帧的结果。
+        /// 这正是游戏里 FighterState.Position 在这一帧的值：
+        /// 逻辑每帧吃一格 RootMotion，累加出来就是角色所在。
+        ///
+        /// 判定框的坐标【永远相对逻辑原点】，所以预览必须把角色摆在这里，
+        /// 否则你画的框会连动画漂移一起吃进去，游戏里就偏成"幽灵框"。
+        /// </summary>
+        private Vector3 LogicOriginAt(int frame)
+        {
+            Vector2[] rm = currentMove?.RootMotion;
+            if (rm == null || rm.Length == 0) return Vector3.zero;
+ 
+            Vector2 accum = Vector2.zero;
+            int n = Mathf.Min(frame, rm.Length);
+            for (int i = 0; i < n; i++) accum += rm[i];
+ 
+            // 逻辑空间 (前, 上) → 战斗平面世界空间 (X, Y)，与 FighterView 的映射一致
+            return new Vector3(accum.x, accum.y, 0f);
         }
  
         /// <summary>
-        /// 合并式保存：读磁盘上的库 → 用本次编辑过的招式覆盖同名项 → 写回。
-        /// 未编辑过的招式原样保留，因此多次会话、多人协作都不会互相覆盖。
-        /// （全量覆盖式保存的经典事故：只编了 1 个招式就保存，磁盘上另外 20 个全没了。）
+        /// 合并式保存 + 自动备份。
+        ///
+        /// 两道保险：
+        ///   ① 合并：读磁盘上的库 → 只用本次编辑过的招式覆盖同名项 → 写回。
+        ///      未编辑过的招式原样保留，多次会话/多人协作不会互相覆盖。
+        ///   ② 备份：覆盖前先把旧文件复制成 .bak。判定框是几小时的手工劳动，
+        ///      一次误操作的代价太大，值得这一行代码。
         /// </summary>
         private void SaveLibrary()
         {
             Directory.CreateDirectory(LibraryFolder);
  
-            // 以磁盘版本为基底
-            var merged = new CharacterBoxData { CharacterId = characterId };
+            // ---- 以磁盘版本为基底 ----
+            var merged = new CharacterBoxData
+            {
+                CharacterId = characterId,
+                Version = CharacterBoxData.CurrentVersion,
+            };
+ 
             if (File.Exists(LibraryPath))
             {
-                CharacterBoxData onDisk = JsonUtility.FromJson<CharacterBoxData>(
-                    File.ReadAllText(LibraryPath));
-                if (onDisk?.Moves != null) merged.Moves.AddRange(onDisk.Moves);
+                // 备份：覆盖前先留一份。判定框是几小时的手工劳动，值得这一行
+                string backup = LibraryPath + ".bak";
+                File.Copy(LibraryPath, backup, overwrite: true);
+ 
+                try
+                {
+                    CharacterBoxData onDisk = JsonUtility.FromJson<CharacterBoxData>(
+                        File.ReadAllText(LibraryPath));
+                    if (onDisk?.Moves != null) merged.Moves.AddRange(Migrate(onDisk).Moves);
+                }
+                catch (System.Exception e)
+                {
+                    if (!EditorUtility.DisplayDialog("磁盘文件损坏",
+                            $"无法解析磁盘上的库文件：{e.Message}\n\n" +
+                            "继续保存会丢失文件里的其他招式（已备份到 .bak）。是否继续？",
+                            "继续保存", "取消"))
+                    {
+                        return;
+                    }
+                }
             }
  
-            // 只把本次编辑过的招式合并进去
+            // ---- 只把本次编辑过的招式合并进去 ----
             foreach (string id in dirtyMoves)
             {
                 MoveBoxData mine = characterData.Find(id);
@@ -775,7 +1146,8 @@ namespace Editor.EditorTools
             dirtyMoves.Clear();
             if (!string.IsNullOrEmpty(moveId)) EnsureCurrentMove();
  
-            Debug.Log($"[HitboxEditor] 已合并保存 {saved} 个招式，库中共 {merged.Moves.Count} 个 → {LibraryPath}");
+            Debug.Log($"[HitboxEditor] 已合并保存 {saved} 个招式，" +
+                      $"库中共 {merged.Moves.Count} 个 → {LibraryPath}");
         }
  
         // ===================== 预览控制 =====================
@@ -788,8 +1160,6 @@ namespace Editor.EditorTools
             previewInstance = Instantiate(rigPrefab);
             previewInstance.name = "[HitboxEditor Preview]";
             previewInstance.hideFlags = HideFlags.DontSave;
-            previewInstance.transform.SetPositionAndRotation(
-                Vector3.zero, Quaternion.Euler(0f, previewRotationY, 0f));
  
             totalFrames = Mathf.Max(1, Mathf.RoundToInt(clip.length * SampleRate));
             currentFrame = 1;
@@ -798,8 +1168,19 @@ namespace Editor.EditorTools
             currentMove = null;
  
             EnsureCurrentMove();
-            SampleToFrame();
+            SampleToFrame();   // 内部会摆到逻辑原点
             AlignSceneView();
+        }
+ 
+        /// <summary>把 Scene 视图摆正到战斗平面（正交、正对 XY）。</summary>
+        private void AlignSceneView()
+        {
+            SceneView sv = SceneView.lastActiveSceneView;
+            if (sv == null) return;
+ 
+            sv.LookAt(new Vector3(0.3f, 1f, 0f), Quaternion.Euler(0f, 0f, 0f), 2.5f);
+            sv.orthographic = true;
+            sv.Repaint();
         }
  
         private void DestroyPreview()
@@ -814,10 +1195,12 @@ namespace Editor.EditorTools
  
             clip.SampleAnimation(previewInstance, (currentFrame - 1) / (float)SampleRate);
  
-            // SampleAnimation 会把 root transform 覆盖成动画里的值，
-            // 需要重新施加预览旋转，否则角色会转回朝 Z 的默认朝向
+            // 关键：钉回【逻辑原点】，不是世界零点。
+            // 这一步同时也重新施加预览旋转——SampleAnimation 会把根 transform
+            // 覆盖成动画里的值，不重设的话角色会转回默认朝向。
             previewInstance.transform.SetPositionAndRotation(
-                Vector3.zero, Quaternion.Euler(0f, previewRotationY, 0f));
+                LogicOriginAt(currentFrame),
+                Quaternion.Euler(0f, previewRotationY, 0f));
  
             SceneView.RepaintAll();
         }

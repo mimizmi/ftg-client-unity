@@ -44,9 +44,26 @@ namespace Domain.Infrastructure.Battle
         {
             foreach (MoveData move in moves)
             {
-                MoveBoxData box = boxData.Find(move.MoveId);
-                if (box == null) continue;
-                move.BoxTracks = box.Tracks;
+                MoveBoxData data = boxData.Find(move.MoveId);
+                if (data == null) continue;
+ 
+                move.BoxTracks = data.Tracks;
+ 
+                if (data.HasFrameSplit)
+                {
+                    move.Startup = data.Startup;
+                    move.Active = data.Active;
+                    move.Recovery = data.Recovery;
+                }
+ 
+                if (data.InvulnTo > 0)
+                {
+                    move.InvulnFrom = data.InvulnFrom;
+                    move.InvulnTo = data.InvulnTo;
+                }
+ 
+                if (data.RootMotion != null && data.RootMotion.Length > 0)
+                    move.RootMotion = data.RootMotion;
             }
         }
     }

@@ -3188,14 +3188,16 @@ MonoBehaviour:
   idleState: Frank_FS4_Idle_Stand_Loop
   hitstunState: Frank_FS4_Hit_High_Front
   blockstunState: Frank_FS4_Hit_High_Front
-  walkForwardState: Frank_FS4_Step_Forward
-  walkBackwardState: Frank_FS4_Step_Backward
+  walkForwardState: Frank_FS4_8Way_QuickWalk_F
+  walkBackwardState: Frank_FS4_8Way_QuickWalk_B
   dashState: Frank_FS4_Dash_Forward
-  runState: Run
   backDashState: Frank_FS4_Dash_Backward
-  jumpSquatState: Frank_FS4_Jump_N_High_All
-  airborneState: Airborne
-  landingState: Landing
+  jumpNeutralState: Frank_FS4_Jump_N_High_All 0
+  jumpForwardState: Frank_FS4_Jump_F_High_All
+  jumpBackwardState: Frank_FS4_Jump_B_High_All
+  runState: Run
+  jumpSquatEnd: 0.12
+  jumpAirEnd: 0.85
   facingStyle: 0
   facingRightYaw: 90
   facingLeftYaw: 270

@@ -44,15 +44,6 @@ namespace Domain.Infrastructure.Battle
         public bool FacingRight = true;
         public int Health = 1000;
  
-        /// <summary>默认受击框（体框）。精细化时可扩展为随招式变化的 Hurtbox 序列。</summary>
-        public Box BodyBox = new Box(0f, 0.9f, 0.6f, 1.8f);
-        
-        /// <summary>
-        /// 推挡框：防止角色重叠。通常整个角色固定不变（不随招式变化），
-        /// 这是格斗游戏的惯例——推挡框若随招式伸缩，角色会被自己的招式"推走"，位置变得不可预测。
-        /// </summary>
-        public Box PushBox = new Box(0f, 0.9f, 0.55f, 1.8f);
- 
         private readonly FightingInputController input;
         private readonly MoveTable moveTable;
         private readonly Dictionary<string, MoveData> moves = new Dictionary<string, MoveData>();
@@ -71,7 +62,8 @@ namespace Domain.Infrastructure.Battle
         {
             this.input = input;
             this.moveTable = moveTable;
-            Movement = new MovementController(movementConfig, input);
+            Movement = new MovementController(movementConfig, input, 
+                id => moves.TryGetValue(id , out MoveData m) ? m : null);
         }
         
         public MovementController Movement { get; }
@@ -124,15 +116,53 @@ namespace Domain.Infrastructure.Battle
  
         public void CollectHurtboxes(List<Box> results)
         {
-            if (CurrentMove != null && CurrentMove.HasBoxes(BoxKind.Hurt)
-                                    && (Status == FighterStatus.Attacking || Status == FighterStatus.CounterStance))
+            if (TryCollect(BoxKind.Hurt, results)) return;
+            results.Clear();
+            
+            Debug.LogWarning(
+                $"[FighterState] {Name} 本帧没有受击框：当前动作未在 HitboxEditor 里画 Hurt 框，" +
+                "且待机招式也没有。角色此刻【打不中】——请补画。", null);
+        }
+        
+        /// <summary>
+        /// 收集本帧的推挡框（防重叠）。同样走回退链。
+        ///
+        /// 推挡框在招式间通常【不变】（就是那根"身体柱子"）——若随招式伸缩，
+        /// 角色会被自己的招式推走，位置变得不可预测。所以实践上是：
+        /// 在 HitboxEditor 里给待机画一次，其余招式用"从招式复制 Hurt/Push"复制过去，
+        /// 只有蹲姿、趴地、大跳这类真正改变体积的动作才单独调。
+        /// </summary>
+        public void CollectPushboxes(List<Box> results)
+        {
+            if (TryCollect(BoxKind.Push, results)) return;
+            results.Clear(); // 无推挡框 = 不参与推挡（例如某些浮空/倒地状态，这是合法的）
+        }
+
+        private bool TryCollect(BoxKind kind, List<Box> results)
+        {
+            if (CurrentMove != null
+                && (Status == FighterStatus.Attacking || Status == FighterStatus.CounterStance)
+                && CurrentMove.HasBoxes(kind))
             {
-                CurrentMove.CollectBoxes(MoveFrame, BoxKind.Hurt, results);
-                if (results.Count > 0) return;
+                CurrentMove.CollectBoxes(MoveFrame, kind, results);
+                if (results.Count > 0) return true;
             }
 
-            results.Clear();
-            results.Add(BodyBox);
+            MoveData motion = Movement.CurrentMotion;
+            if (motion != null && motion.HasBoxes(kind))
+            {
+                motion.CollectBoxes(Movement.MotionFrame, kind, results);
+                if (results.Count > 0) return true;
+            }
+
+            MoveData idle = Movement.IdleMove;
+            if (idle != null && idle.HasBoxes(kind))
+            {
+                idle.CollectBoxes(1, kind, results);
+                if (results.Count > 0) return true;
+            }
+
+            return false;
         }
 
         public FighterSnapshot Snapshot(int frame) => new FighterSnapshot(frame, this);

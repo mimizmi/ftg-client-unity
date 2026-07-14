@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 
 namespace Domain.Infrastructure.Battle
 {
@@ -14,6 +15,9 @@ namespace Domain.Infrastructure.Battle
     /// </summary>
     public sealed class PushboxResolver
     {
+        private readonly List<Box> boxesA = new List<Box>(2);
+        private readonly List<Box> boxesB = new List<Box>(2);
+        
         /// <summary>场地左右边界（世界坐标）</summary>
         public float StageLeft = -6f;
         public float StageRight = 6f;
@@ -30,18 +34,12 @@ namespace Domain.Infrastructure.Battle
             ResolveOverlapAgainstWall(p1, p2);
         }
 
-        private static void ResolveOverlap(FighterState a, FighterState b)
+        private void ResolveOverlap(FighterState a, FighterState b)
         {
             // 空中角色不参与推挡——这是格斗游戏的通行设定，否则跳过对方头顶会被卡住
             if (a.Movement.IsAirborne || b.Movement.IsAirborne) return;
 
-            Rect ra = a.PushBox.ToWorld(a.Position, a.FacingRight);
-            Rect rb = b.PushBox.ToWorld(b.Position, b.FacingRight);
-            if (!ra.Overlaps(rb)) return;
-
-            // 水平重叠量
-            float overlap = Mathf.Min(ra.xMax, rb.xMax) - Mathf.Max(ra.xMin, rb.xMin);
-            if (overlap <= 0f) return;
+            if (!TryGetOverlap(a, b, out float overlap)) return;
 
             // 各推开一半（对称，无优先方）
             float half = overlap * 0.5f;
@@ -50,15 +48,41 @@ namespace Domain.Infrastructure.Battle
             a.Position.x += dir * half;
             b.Position.x -= dir * half;
         }
+        
+        /// <summary>取两人推挡框的水平重叠量。框全部来自 JSON，不再有硬编码的"身体柱子"。</summary>
+        private bool TryGetOverlap(FighterState a, FighterState b, out float overlap)
+        {
+            overlap = 0f;
+            a.CollectPushboxes(boxesA);
+            b.CollectPushboxes(boxesB);
+            if (boxesA.Count == 0 || boxesB.Count == 0) return false;
+ 
+            for (int i = 0; i < boxesA.Count; i++)
+            {
+                Rect ra = boxesA[i].ToWorld(a.Position, a.FacingRight);
+                for (int j = 0; j < boxesB.Count; j++)
+                {
+                    Rect rb = boxesB[j].ToWorld(b.Position, b.FacingRight);
+                    if (!ra.Overlaps(rb)) continue;
+ 
+                    float o = Mathf.Min(ra.xMax, rb.xMax) - Mathf.Max(ra.xMin, rb.xMin);
+                    if (o > overlap) overlap = o;
+                }
+            }
+            return overlap > 0f;
+        }
 
         private void ClampToStage(FighterState f)
         {
-            Rect box = f.PushBox.ToWorld(f.Position, f.FacingRight);
-            float halfW = box.width * 0.5f;
-
-            float min = StageLeft + halfW;
-            float max = StageRight - halfW;
-            f.Position.x = Mathf.Clamp(f.Position.x, min, max);
+            f.CollectPushboxes(boxesA);
+            if (boxesA.Count == 0) return;
+ 
+            // 用最宽的推挡框做边界约束
+            float halfW = 0f;
+            foreach (Box b in boxesA)
+                halfW = Mathf.Max(halfW, b.W * 0.5f);
+ 
+            f.Position.x = Mathf.Clamp(f.Position.x, StageLeft + halfW, StageRight - halfW);
         }
 
         /// <summary>
@@ -69,18 +93,12 @@ namespace Domain.Infrastructure.Battle
         private void ResolveOverlapAgainstWall(FighterState a, FighterState b)
         {
             if (a.Movement.IsAirborne || b.Movement.IsAirborne) return;
-
-            Rect ra = a.PushBox.ToWorld(a.Position, a.FacingRight);
-            Rect rb = b.PushBox.ToWorld(b.Position, b.FacingRight);
-            if (!ra.Overlaps(rb)) return;
-
-            float overlap = Mathf.Min(ra.xMax, rb.xMax) - Mathf.Max(ra.xMin, rb.xMin);
-            if (overlap <= 0f) return;
-
+            if (!TryGetOverlap(a, b, out float overlap)) return;
+ 
             // 判断谁贴着版边，把重叠量全推给另一方
-            bool aAtWall = IsAtWall(a, ra);
-            bool bAtWall = IsAtWall(b, rb);
-
+            bool aAtWall = IsAtWall(a);
+            bool bAtWall = IsAtWall(b);
+ 
             if (aAtWall && !bAtWall)
             {
                 float dir = a.Position.x <= b.Position.x ? 1f : -1f;
@@ -93,10 +111,19 @@ namespace Domain.Infrastructure.Battle
             }
         }
 
-        private bool IsAtWall(FighterState f, Rect box)
+        private bool IsAtWall(FighterState f)
         {
+            f.CollectPushboxes(boxesA);
+            if (boxesA.Count == 0) return false;
+ 
             const float epsilon = 0.001f;
-            return box.xMin <= StageLeft + epsilon || box.xMax >= StageRight - epsilon;
+            foreach (Box b in boxesA)
+            {
+                Rect r = b.ToWorld(f.Position, f.FacingRight);
+                if (r.xMin <= StageLeft + epsilon || r.xMax >= StageRight - epsilon)
+                    return true;
+            }
+            return false;
         }
     }
 }

@@ -84,7 +84,9 @@ namespace Domain.Infrastructure.Battle
                 // 236P 这一个指令，下面的招式表会按 LP/MP/HP 解析成三个不同招式。
                 Motions = new[]
                 {
-                    MotionLibrary.LP("623P", anyPunch)
+                    MotionLibrary.LP("623P", anyPunch),
+                    MotionLibrary.DashForward(),          // "DASH_F"
+                    MotionLibrary.DashBackward(),         // "DASH_B"
                 },
  
                 // ===== 招式表：指令/按键 → 具体招式。连招和动画名都在这里定 =====
@@ -118,7 +120,74 @@ namespace Domain.Infrastructure.Battle
                         Damage = 30, HitstunFrames = 17, BlockstunFrames = 8,
                         CancelFrom = 5, // 命中后从判定帧起可取消 → 连招
 
-                    }
+                    },
+                    new MoveData
+                    {
+                        MoveId = "Frank_FS4_Idle_Stand_Loop",
+                        Startup = 0, Active = 60, Recovery = 0, // 全程可行动；总帧数 = 待机 clip 帧数
+                        Attributes = AttackAttribute.None,
+                        RootMotion = FrankRootMotion.Get("Frank_FS4_Idle_Stand_Loop"),
+                    },
+                     new MoveData
+                    {
+                        MoveId = "Frank_FS4_8Way_QuickWalk_F",
+                        Startup = 0, Active = 32, Recovery = 0, // 全程可行动；总帧数 = clip 帧数
+                        Attributes = AttackAttribute.None,
+                        RootMotion = FrankRootMotion.Get("Frank_FS4_8Way_QuickWalk_F"),
+                    },
+                    new MoveData
+                    {
+                        MoveId = "Frank_FS4_8Way_QuickWalk_B",
+                        Startup = 0, Active = 32, Recovery = 0,
+                        Attributes = AttackAttribute.None,
+                        RootMotion = FrankRootMotion.Get("Frank_FS4_8Way_QuickWalk_B"),
+                    },
+ /*
+                    // 冲刺：一次性动画。Startup=起步(锁死,被抓就是确反)
+                    // Active=推进(可取消出招 dash cancel) / Recovery=收招(锁死,不能防)
+                    new MoveData
+                    {
+                        MoveId = "Dash",
+                        Startup = 3, Active = 12, Recovery = 4,
+                        Attributes = AttackAttribute.None,
+                        RootMotion = FrankRootMotion.Get("Dash"),
+                    },
+ 
+                    // 后跃：无敌帧写在 InvulnFrom/To 里 —— 这是后跃能"逃"的原因
+                    new MoveData
+                    {
+                        MoveId = "BackDash",
+                        Startup = 0, Active = 18, Recovery = 4,
+                        Attributes = AttackAttribute.None,
+                        InvulnFrom = 1, InvulnTo = 7,
+                        RootMotion = FrankRootMotion.Get("BackDash"),
+                    },*/
+ 
+                    // 跳跃：Startup=起跳预备(仍在地面,被抓到就是确反)
+                    // Active=腾空(可出空中招) / Recovery=落地硬直
+                    // 抛物线烘在动画里，不需要 velocity/gravity 另算一条
+                    new MoveData
+                    {
+                        MoveId = "Frank_FS4_Jump_N_High_All",
+                        Startup = 5, Active = 38, Recovery = 4, // 总帧数须等于 clip 帧数
+                        Attributes = AttackAttribute.None,
+                        RootMotion = FrankRootMotion.Get("Frank_FS4_Jump_N_High_All"),
+                    },
+                    /*
+                    new MoveData
+                    {
+                        MoveId = "JumpForward",
+                        Startup = 5, Active = 38, Recovery = 4,
+                        Attributes = AttackAttribute.None,
+                        RootMotion = FrankRootMotion.Get("JumpForward"),
+                    },
+                    new MoveData
+                    {
+                        MoveId = "JumpBackward",
+                        Startup = 5, Active = 38, Recovery = 4,
+                        Attributes = AttackAttribute.None,
+                        RootMotion = FrankRootMotion.Get("JumpBackward"),
+                    },*/
                 },
             };
         }
