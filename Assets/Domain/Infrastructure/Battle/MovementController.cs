@@ -118,11 +118,14 @@ namespace Domain.Infrastructure.Battle
             get
             {
                 if (IsAirDashing)
-                    return airDash.TotalFrames <= 0 ? 0f
-                        : Mathf.Clamp01((airDashFrame - 1f) / airDash.TotalFrames);
+                {
+                    return airDash.TotalFrames <= 0
+                        ? 0f
+                        : Mathf.Clamp01(airDashFrame / (float)airDash.TotalFrames);
+                }
  
                 if (CurrentMotion == null || CurrentMotion.TotalFrames <= 0) return 0f;
-                return Mathf.Clamp01((MotionFrame - 1f) / CurrentMotion.TotalFrames);
+                return Mathf.Clamp01(MotionFrame / (float)CurrentMotion.TotalFrames);
             }
         }
  

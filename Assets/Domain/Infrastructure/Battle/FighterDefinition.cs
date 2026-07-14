@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using Domain.Infrastructure.Auto;
 using Domain.Infrastructure.Input;
 using Domain.Infrastructure.Motion;
 using UnityEngine;
@@ -47,7 +46,7 @@ namespace Domain.Infrastructure.Battle
         private readonly Dictionary<string, FighterDefinition> cache =
             new Dictionary<string, FighterDefinition>();
  
-        private readonly BoxDataLoader boxLoader = new BoxDataLoader();
+        private readonly BoxDataLoader loader = new BoxDataLoader();
         
         public FighterDefinition Get(string characterId)
         {
@@ -55,9 +54,10 @@ namespace Domain.Infrastructure.Battle
                 return def;
  
             def = Build(characterId);
-            CharacterBoxData boxes = boxLoader.Load(characterId);
-            boxLoader.Apply(boxes, def.Moves);
-
+ 
+            // 注入全部"从动画来的数据"：帧分割、判定框、无敌帧、位移
+            loader.Apply(characterId, def.Moves);
+ 
             cache[characterId] = def;
             return def;
         }
@@ -107,13 +107,11 @@ namespace Domain.Infrastructure.Battle
                         Startup = 10, Active = 2, Recovery = 28,
                         Attributes = AttackAttribute.Strike | AttackAttribute.Mid,
                         Damage = 30, HitstunFrames = 11, BlockstunFrames = 8,
-                        RootMotion = FrankRootMotion.Get("Frank_FS4_Attack_Punch_L_02"),
                         CancelFrom = 5, // 命中后从判定帧起可取消 → 连招
                     },
                     new MoveData
                     {
                         // 粘贴后可按手感手调；帧数据是权威，动画服从它。
-                        RootMotion = FrankRootMotion.Get("Frank_FS4_Attack_Kick_L_02"),
                         MoveId = "Frank_FS4_Attack_Kick_L_02",
                         Startup = 16, Active = 4, Recovery = 34,
                         Attributes = AttackAttribute.Strike | AttackAttribute.Mid,
@@ -126,42 +124,37 @@ namespace Domain.Infrastructure.Battle
                         MoveId = "Frank_FS4_Idle_Stand_Loop",
                         Startup = 0, Active = 60, Recovery = 0, // 全程可行动；总帧数 = 待机 clip 帧数
                         Attributes = AttackAttribute.None,
-                        RootMotion = FrankRootMotion.Get("Frank_FS4_Idle_Stand_Loop"),
                     },
                      new MoveData
                     {
                         MoveId = "Frank_FS4_8Way_QuickWalk_F",
                         Startup = 0, Active = 32, Recovery = 0, // 全程可行动；总帧数 = clip 帧数
                         Attributes = AttackAttribute.None,
-                        RootMotion = FrankRootMotion.Get("Frank_FS4_8Way_QuickWalk_F"),
                     },
                     new MoveData
                     {
                         MoveId = "Frank_FS4_8Way_QuickWalk_B",
                         Startup = 0, Active = 32, Recovery = 0,
-                        Attributes = AttackAttribute.None,
-                        RootMotion = FrankRootMotion.Get("Frank_FS4_8Way_QuickWalk_B"),
+                        Attributes = AttackAttribute.None
                     },
- /*
+ 
                     // 冲刺：一次性动画。Startup=起步(锁死,被抓就是确反)
                     // Active=推进(可取消出招 dash cancel) / Recovery=收招(锁死,不能防)
                     new MoveData
                     {
-                        MoveId = "Dash",
+                        MoveId = "Frank_FS4_Dash_Forward",
                         Startup = 3, Active = 12, Recovery = 4,
                         Attributes = AttackAttribute.None,
-                        RootMotion = FrankRootMotion.Get("Dash"),
                     },
  
                     // 后跃：无敌帧写在 InvulnFrom/To 里 —— 这是后跃能"逃"的原因
                     new MoveData
                     {
-                        MoveId = "BackDash",
+                        MoveId = "Frank_FS4_Dash_Backward",
                         Startup = 0, Active = 18, Recovery = 4,
                         Attributes = AttackAttribute.None,
                         InvulnFrom = 1, InvulnTo = 7,
-                        RootMotion = FrankRootMotion.Get("BackDash"),
-                    },*/
+                    },
  
                     // 跳跃：Startup=起跳预备(仍在地面,被抓到就是确反)
                     // Active=腾空(可出空中招) / Recovery=落地硬直
@@ -170,8 +163,7 @@ namespace Domain.Infrastructure.Battle
                     {
                         MoveId = "Frank_FS4_Jump_N_High_All",
                         Startup = 5, Active = 38, Recovery = 4, // 总帧数须等于 clip 帧数
-                        Attributes = AttackAttribute.None,
-                        RootMotion = FrankRootMotion.Get("Frank_FS4_Jump_N_High_All"),
+                        Attributes = AttackAttribute.None
                     },
                     /*
                     new MoveData

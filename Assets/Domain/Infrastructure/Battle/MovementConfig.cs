@@ -25,8 +25,8 @@ namespace Domain.Infrastructure.Battle
         // ---- 地面移动（MoveId = Animator State = Clip 名）----
         public string WalkForwardId = "Frank_FS4_8Way_QuickWalk_F";
         public string WalkBackwardId = "Frank_FS4_8Way_QuickWalk_B";
-        public string DashId = "Dash";
-        public string BackDashId = "BackDash";
+        public string DashId = "Frank_FS4_Dash_Forward";
+        public string BackDashId = "Frank_FS4_Dash_Backward";
  
         /// <summary>跑步循环。留空 = 无跑步（冲刺制，街霸四代/五代/六代与现代主流）。</summary>
         public string RunId = "";

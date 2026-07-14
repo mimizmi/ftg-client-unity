@@ -41,10 +41,12 @@ namespace Domain.Infrastructure.Battle
             loop = battleLoop;
             fighter = fighterState;
  
-            if (animator == null)
-                animator = GetComponentInChildren<Animator>();
+            if (animator == null) animator = GetComponentInChildren<Animator>();
  
-            // 位置权威在逻辑侧，Animator 驱动位置会与之打架
+            // 运行时【必须关闭】：位置权威属于 FighterState，
+            // Animator 再驱动一次位置就是双重位移（角色以两倍速度飞出去）。
+            // 同样在代码里强制，不依赖 Prefab 勾选 —— 编辑期工具要开、运行期要关，
+            // 靠人记这个规则迟早出事。
             if (animator != null && animator.applyRootMotion)
             {
                 animator.applyRootMotion = false;
@@ -106,7 +108,7 @@ namespace Domain.Infrastructure.Battle
                     // 前提：该 State 下动画长度 ≈ TotalFrames/60 秒；若美术给的动画
                     // 时长和帧数据不一致，这行会自动拉伸对齐——帧数据永远是权威。
                     MoveData move = fighter.CurrentMove;
-                    float normalized = (fighter.MoveFrame - 1f) / move.TotalFrames;
+                    float normalized = Mathf.Clamp01(fighter.MoveFrame / (float)move.TotalFrames);
                     animator.Play(GetMoveStateHash(move.MoveId), 0, normalized);
                     playingStateHash = 0;
                     break;
@@ -142,17 +144,16 @@ namespace Domain.Infrastructure.Battle
         {
             // 所有移动（走路/冲刺/后跃/跳跃/空中冲刺）都是招式，
             // 一律用 normalizedTime 由逻辑帧驱动播放头 —— 与招式动画完全同构。
-            // 于是动画与位移严丝合缝：它们本就是同一份数据。
+            // 动画与位移严丝合缝：它们本就是同一份数据。
             string clipId = movement.MotionClipId;
             if (!string.IsNullOrEmpty(clipId))
             {
                 int hash = ResolveState(clipId, idleState);
                 animator.Play(hash, 0, movement.MotionNormalizedTime);
-                playingStateHash = 0; // 让下一个 CrossFade 状态能正常进入
+                playingStateHash = 0;
                 return;
             }
  
-            // 无移动招式 = 站立
             PlayLoose(idleState);
         }
  
