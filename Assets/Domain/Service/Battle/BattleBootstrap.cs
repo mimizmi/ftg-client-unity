@@ -81,6 +81,8 @@ namespace Domain.Service.Battle
             };
             foreach (MoveData move in definition.Moves)
                 fighter.AddMove(move);
+            // 受击类别 → 受击招式映射（受击招式本身已在上面的 Moves 里，带烘焙位移）
+            fighter.SetReactions(definition.ReactionMoves);
             
             instance = Instantiate(characterPrefab,
                 new Vector3(spawnPosition.x, spawnPosition.y, 0f), Quaternion.identity);

@@ -11,6 +11,28 @@ namespace Domain.Infrastructure.Battle
         Active,    // 判定帧
         Recovery,  // 后摇/恢复：确反窗口，此时被打 = Counter Hit
     }
+
+    /// <summary>
+    /// 受击类别——一套【所有角色共享】的反应词表。攻击只声明"造成哪一类反应"，
+    /// 由挨打的角色把类别映射到自己的受击 clip（受击动画长在挨打者身上，不在出招者身上）。
+    /// 这样避免"每个招配一个专属受击"的组合爆炸：N 个招 × M 个角色不再是 N×M 套 clip。
+    ///
+    /// 攻击方按【站立地面目标】声明基础类别；挨打方按自身姿态在 ApplyHit 里做二次解析：
+    /// 空中 → AirHit；蹲姿 → 对应蹲姿档。特殊反应(挑空/扫倒/碎败)自带姿态语义，原样透传。
+    /// </summary>
+    public enum HitReaction : byte
+    {
+        None = 0,     // 不指定：表现层沿用通用受击（向后兼容）
+        StandLight,   // 站立轻受击（小顿）
+        StandMedium,  // 站立中受击
+        StandHeavy,   // 站立重受击（大幅后仰）
+        CrouchLight,  // 蹲姿轻受击
+        CrouchHeavy,  // 蹲姿重受击
+        AirHit,       // 空中被击（浮空继续）
+        Launch,       // 挑空：把对方打进浮空
+        Sweep,        // 扫倒：击倒在地
+        Crumple,      // 碎败：缓慢跪倒（常用于 CH 重击）
+    }
  
     /// <summary>
     /// 攻击属性。克制关系全靠它表达：
@@ -81,6 +103,13 @@ namespace Domain.Infrastructure.Battle
         public int Damage;
         public int HitstunFrames;   // 命中对方的硬直
         public int BlockstunFrames; // 被防时对方的防御硬直
+        public int Hitstop;         // 命中顿帧覆盖（0 = 用 CollisionResolver 的结果默认；重招可调大）
+
+        /// <summary>
+        /// 命中对方时令其播放的受击类别（按站立地面目标声明；挨打方再按自身姿态二次解析）。
+        /// None = 沿用通用受击动画，向后兼容。见 <see cref="HitReaction"/>。
+        /// </summary>
+        public HitReaction Reaction;
  
         /// <summary>
         /// 取消窗口起始帧（招式内帧号）。命中/被防后，从该帧起本招可被新招取消 → 连招。

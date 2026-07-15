@@ -23,6 +23,13 @@ namespace Domain.Infrastructure.Battle
         public MoveData[] Moves = Array.Empty<MoveData>();
         
         public MovementConfig Movement = new MovementConfig();
+
+        /// <summary>
+        /// 受击类别 → 受击招式 MoveId。受击招式本身放在上面的 Moves 里（与其它动作一样
+        /// 是带烘焙 RootMotion 的 MoveData），这里只做"类别→招式"的一层映射。
+        /// 挨打方按自身姿态解析出类别后，据此取到受击招式并逐帧结算其击退位移。
+        /// </summary>
+        public Dictionary<HitReaction, string> ReactionMoves = new Dictionary<HitReaction, string>();
     }
  
     /// <summary>
@@ -75,6 +82,7 @@ namespace Domain.Infrastructure.Battle
         private FighterDefinition BuildShoto()
         {
             ButtonMask anyPunch = ButtonMask.LP | ButtonMask.MP | ButtonMask.HP;
+            ButtonMask anyKick = ButtonMask.LK | ButtonMask.MK | ButtonMask.HK;
  
             return new FighterDefinition
             {
@@ -84,9 +92,12 @@ namespace Domain.Infrastructure.Battle
                 // 236P 这一个指令，下面的招式表会按 LP/MP/HP 解析成三个不同招式。
                 Motions = new[]
                 {
-                    MotionLibrary.LP("623P", anyPunch),
-                    MotionLibrary.DashForward(),          // "DASH_F"
-                    MotionLibrary.DashBackward(),         // "DASH_B"
+                    // 623P = 升龙指令（前→下→前下）。注意这里只是【识别】了指令，
+                    // 还需在 MoveEntries 配 CommandId="623P" 的条目 + 对应 MoveData + Animator clip，
+                    // 升龙才真正能出（目前②③④尚缺，故 623P 暂时搓出来也不产生招）。
+                    MotionLibrary.Dp("623P", anyPunch),
+                    MotionLibrary.DashForward(),          // 指令名 "DASH_F"
+                    MotionLibrary.DashBackward(),         // 指令名 "DASH_B"
                 },
  
                 // ===== 招式表：指令/按键 → 具体招式。连招和动画名都在这里定 =====
@@ -94,8 +105,21 @@ namespace Domain.Infrastructure.Battle
                 MoveEntries = new[]
                 {
                     // --- 普通技：同一按键，姿态决定招式（站/蹲各一套动画）---
-                    new MoveEntry { Buttons = ButtonMask.LP, Stance = Stance.Standing,  MoveId = "Frank_FS4_Attack_Punch_L_02", Priority = 10 },
-                    new MoveEntry { Buttons = ButtonMask.LK, Stance = Stance.Standing, MoveId = "Frank_FS4_Attack_Kick_L_02", Priority = 10}
+                    // CancelFrom：命中/被防后可从列出的招取消出 → gatling 连段（去僵硬的核心）。
+                    // 这里让 LP↔LK 互为取消来源：LP 命中可取消接 LK，反之亦然（轻攻击 chain）。
+                    // 注：目前是交替无限 chain，Phase 1 会加"每招在一段连里只能用一次"的上限。
+                    new MoveEntry { Buttons = ButtonMask.LP, Stance = Stance.Standing, MoveId = "Frank_FS4_Attack_Punch_L_02", Priority = 10,
+                        CancelFrom = new[] { "Frank_FS4_Attack_Kick_L_02" } },
+                    new MoveEntry { Buttons = ButtonMask.LK, Stance = Stance.Standing, MoveId = "Frank_FS4_Attack_Kick_L_02", Priority = 10,
+                        CancelFrom = new[] { "Frank_FS4_Attack_Punch_L_02" } },
+                    // 轻拳目标连：LP 连点 Punch_02→03→04→05。每段从【前一记拳】取消出（同键目标连的关键）。
+                    // CancelOnly=true 使 03/04/05 只在连里存在、中立态点 LP 永远是起手的 Punch_02。
+                    new MoveEntry { Buttons = ButtonMask.LP, Stance = Stance.Standing, MoveId = "Frank_FS4_Attack_Punch_L_03", Priority = 20,
+                        CancelFrom = new[] { "Frank_FS4_Attack_Punch_L_02" }, CancelOnly = true},
+                    new MoveEntry { Buttons = ButtonMask.LP, Stance = Stance.Standing, MoveId = "Frank_FS4_Attack_Punch_L_04", Priority = 20,
+                        CancelFrom = new[] { "Frank_FS4_Attack_Punch_L_03" }, CancelOnly = true},
+                    new MoveEntry { Buttons = ButtonMask.LP, Stance = Stance.Standing, MoveId = "Frank_FS4_Attack_Punch_L_05", Priority = 20,
+                        CancelFrom = new[] { "Frank_FS4_Attack_Punch_L_04" }, CancelOnly = true},
                 },
  
                 Moves = new[]
@@ -104,20 +128,48 @@ namespace Domain.Infrastructure.Battle
                     new MoveData
                     {
                         MoveId = "Frank_FS4_Attack_Punch_L_02",
-                        Startup = 10, Active = 2, Recovery = 28,
+                        Startup = 5, Active = 3, Recovery = 10, 
                         Attributes = AttackAttribute.Strike | AttackAttribute.Mid,
-                        Damage = 30, HitstunFrames = 11, BlockstunFrames = 8,
-                        CancelFrom = 5, // 命中后从判定帧起可取消 → 连招
+                        Damage = 30, HitstunFrames = 50, BlockstunFrames = 8,
+                        CancelFrom = 0,
+                        Reaction = HitReaction.StandLight, 
+                    },
+                    new MoveData
+                    {
+                        MoveId = "Frank_FS4_Attack_Punch_L_03",
+                        Startup = 5, Active = 3, Recovery = 10, 
+                        Attributes = AttackAttribute.Strike | AttackAttribute.Mid,
+                        Damage = 30, HitstunFrames = 50, BlockstunFrames = 8,
+                        CancelFrom = 5, 
+                        Reaction = HitReaction.StandLight, 
+                    },
+                    new MoveData
+                    {
+                        MoveId = "Frank_FS4_Attack_Punch_L_04",
+                        Startup = 5, Active = 3, Recovery = 10, 
+                        Attributes = AttackAttribute.Strike | AttackAttribute.Mid,
+                        Damage = 30, HitstunFrames = 50, BlockstunFrames = 8,
+                        CancelFrom = 5, 
+                        Reaction = HitReaction.StandLight, 
+                    },
+                    new MoveData
+                    {
+                        MoveId = "Frank_FS4_Attack_Punch_L_05",
+                        Startup = 5, Active = 3, Recovery = 10,
+                        Attributes = AttackAttribute.Strike | AttackAttribute.Mid,
+                        Damage = 50, HitstunFrames = 50, BlockstunFrames = 8,
+                        CancelFrom = 5, 
+                        Reaction = HitReaction.StandLight, 
                     },
                     new MoveData
                     {
                         // 粘贴后可按手感手调；帧数据是权威，动画服从它。
                         MoveId = "Frank_FS4_Attack_Kick_L_02",
-                        Startup = 16, Active = 4, Recovery = 34,
+                        Startup = 6, Active = 3, Recovery = 12, // 现实轻脚帧数（原 16/4/34 太长太僵）
                         Attributes = AttackAttribute.Strike | AttackAttribute.Mid,
-                        Damage = 30, HitstunFrames = 17, BlockstunFrames = 8,
+                        Damage = 30, HitstunFrames = 25, BlockstunFrames = 8,
                         CancelFrom = 5, // 命中后从判定帧起可取消 → 连招
-
+                        Reaction = HitReaction.StandMedium, // 轻脚 → 中受击（蹲姿命中降为 CrouchHeavy）
                     },
                     new MoveData
                     {
@@ -165,21 +217,53 @@ namespace Domain.Infrastructure.Battle
                         Startup = 5, Active = 38, Recovery = 4, // 总帧数须等于 clip 帧数
                         Attributes = AttackAttribute.None
                     },
-                    /*
+
+                    // ===== 受击招式：与其它动作同构，带烘焙位移（击退）=====
+                    // 硬直期间由 FighterState 逐帧结算其 RootMotion。TotalFrames 应 = 受击 clip 帧数；
+                    // 位移用 FG/Batch Root Motion Baker 烘进 rootmotion.json（前进轴向后=击退方向）。
+                    // 先给一条示例，映射多个类别到同一 clip；有了各档受击 clip 再拆开。
                     new MoveData
                     {
-                        MoveId = "JumpForward",
-                        Startup = 5, Active = 38, Recovery = 4,
+                        MoveId = "Frank_FS4_Hit_High_Front",
+                        Startup = 0, Active = 20, Recovery = 0, // Active 占位，按实际受击 clip 帧数调
                         Attributes = AttackAttribute.None,
-                        RootMotion = FrankRootMotion.Get("JumpForward"),
+                    },
+                    
+                    new MoveData
+                    {
+                        MoveId = "Frank_FS4_Hit_Mid_Front",
+                        Startup = 0, Active = 20, Recovery = 0, // Active 占位，按实际受击 clip 帧数调
+                        Attributes = AttackAttribute.None,
+                    },
+                    // 前跳/后跳：与垂直跳同构（前上=9 触发前跳，后上=7 触发后跳，见 MovementController）。
+                    // 位移(抛物线+水平前/后)由 FG/Batch Root Motion Baker 烘进 rootmotion.json，
+                    // 运行时按 MoveId 注入——所以这里【不写】RootMotion。
+                    // ⚠ MoveId 须与三处一致：config.JumpForwardId/BackwardId、Animator State 名、
+                    // rootmotion.json 的 key。有真 clip 后把这三处一起改成真名（如 Frank_FS4_Jump_F_High_All）。
+                    new MoveData
+                    {
+                        MoveId = "Frank_FS4_Jump_F_High_All",
+                        Startup = 5, Active = 38, Recovery = 4, // 占位帧数，须 = 前跳 clip 帧数
+                        Attributes = AttackAttribute.None,
                     },
                     new MoveData
                     {
-                        MoveId = "JumpBackward",
-                        Startup = 5, Active = 38, Recovery = 4,
+                        MoveId = "Frank_FS4_Jump_B_High_All",
+                        Startup = 5, Active = 38, Recovery = 4, // 占位帧数，须 = 后跳 clip 帧数
                         Attributes = AttackAttribute.None,
-                        RootMotion = FrankRootMotion.Get("JumpBackward"),
-                    },*/
+                    },
+                },
+
+                // 受击类别 → 受击招式。示例先全部指向同一条受击 clip；
+                // 有了站/蹲/浮空各档的受击动画后，把对应类别改到各自的 MoveId 即可。
+                ReactionMoves = new Dictionary<HitReaction, string>
+                {
+                    { HitReaction.StandLight,  "Frank_FS4_Hit_High_Front" },
+                    { HitReaction.StandMedium, "Frank_FS4_Hit_Mid_Front" },
+                    { HitReaction.StandHeavy,  "Frank_FS4_Hit_High_Front" },
+                    { HitReaction.CrouchLight, "Frank_FS4_Hit_High_Front" },
+                    { HitReaction.CrouchHeavy, "Frank_FS4_Hit_High_Front" },
+                    { HitReaction.AirHit,      "Frank_FS4_Hit_High_Front" },
                 },
             };
         }

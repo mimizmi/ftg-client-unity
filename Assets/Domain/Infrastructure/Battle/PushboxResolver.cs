@@ -19,8 +19,8 @@ namespace Domain.Infrastructure.Battle
         private readonly List<Box> boxesB = new List<Box>(2);
         
         /// <summary>场地左右边界（世界坐标）</summary>
-        public float StageLeft = -6f;
-        public float StageRight = 6f;
+        public float StageLeft = -3f;
+        public float StageRight = 3f;
 
         /// <summary>角色最大分离距离。超过这个距离摄像机/场地会限制（暂未实现，留接口）</summary>
         public float MaxSeparation = 8f;

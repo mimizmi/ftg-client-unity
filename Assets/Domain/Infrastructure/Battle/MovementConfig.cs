@@ -33,8 +33,8 @@ namespace Domain.Infrastructure.Battle
  
         // ---- 跳跃 ----
         public string JumpNeutralId = "Frank_FS4_Jump_N_High_All";
-        public string JumpForwardId = "JumpForward";
-        public string JumpBackwardId = "JumpBackward";
+        public string JumpForwardId = "Frank_FS4_Jump_F_High_All";
+        public string JumpBackwardId = "Frank_FS4_Jump_B_High_All";
  
         // ---- 空中冲刺 ----
         /// <summary>空中冲刺。留空 = 无空中冲刺。</summary>

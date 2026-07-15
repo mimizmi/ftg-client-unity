@@ -50,6 +50,12 @@ namespace Domain.Infrastructure.Battle
         public float CounterHitDamageScale = 1.2f;
         public int CounterHitBonusStun = 8;
 
+        // ---- 顿帧(hitstop)：命中定格帧数。命中是主手调旋钮，防御/CH 由它派生 ----
+        public int HitHitstop = 8;              // 命中顿帧：盯这一个数手调（脆↔沉）
+        public float BlockHitstopScale = 0.7f;  // 防御 = 命中 ×此（防比命中轻）
+        public int CounterHitBonus = 4;         // CH = 命中 + 此（确反重奖）
+        public int ParryHitstop = 16;           // 拒止定格自成一档（SF3 式闪光演出）
+
         public void Resolve(int frame, FighterState p1, FighterState p2, List<HitEvent> results)
         {
             results.Clear();
@@ -156,16 +162,17 @@ namespace Domain.Infrastructure.Battle
         private void Apply(HitEvent ev)
         {
             MoveData move = ev.Move;
+            ApplyHitstop(ev); // 攻防双方同时定格（冲击感）；投/拆投/当身 v1 不加
             switch (ev.Outcome)
             {
                 case DefenseOutcome.Hit:
-                    ev.Defender.ApplyHit(move.Damage, move.HitstunFrames);
+                    ev.Defender.ApplyHit(move.Damage, move.HitstunFrames, move.Reaction);
                     break;
 
                 case DefenseOutcome.CounterHit:
                     ev.Defender.ApplyHit(
                         Mathf.RoundToInt(move.Damage * CounterHitDamageScale),
-                        move.HitstunFrames + CounterHitBonusStun);
+                        move.HitstunFrames + CounterHitBonusStun, move.Reaction);
                     break;
 
                 case DefenseOutcome.Blocked:
@@ -185,7 +192,7 @@ namespace Domain.Infrastructure.Battle
                     break;
 
                 case DefenseOutcome.Thrown:
-                    ev.Defender.ApplyHit(move.Damage, move.HitstunFrames);
+                    ev.Defender.ApplyHit(move.Damage, move.HitstunFrames, move.Reaction);
                     break;
 
                 case DefenseOutcome.ThrowTeched:
@@ -194,6 +201,27 @@ namespace Domain.Infrastructure.Battle
                     ev.Defender.ApplyBlockstun(12);
                     break;
             }
+        }
+
+        /// <summary>
+        /// 按结果给攻防双方置入顿帧。命中/CH 可被 MoveData.Hitstop 覆盖；
+        /// 防御/拒止用各自默认；投/拆投/当身 v1 不加顿帧（有各自演出流程）。
+        /// </summary>
+        private void ApplyHitstop(HitEvent ev)
+        {
+            int hit = ev.Move.Hitstop > 0 ? ev.Move.Hitstop : HitHitstop; // 招式可覆盖命中顿帧
+            int frames;
+            switch (ev.Outcome)
+            {
+                case DefenseOutcome.Hit:        frames = hit; break;
+                case DefenseOutcome.CounterHit: frames = hit + CounterHitBonus; break;
+                case DefenseOutcome.Blocked:    frames = Mathf.RoundToInt(hit * BlockHitstopScale); break;
+                case DefenseOutcome.Parried:    frames = ParryHitstop; break;
+                default: return; // Thrown / ThrowTeched / CounterCaught：v1 不加顿帧
+            }
+
+            ev.Attacker.ApplyHitstop(frames);
+            ev.Defender.ApplyHitstop(frames);
         }
     }
 }

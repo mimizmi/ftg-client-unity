@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Domain.Infrastructure.Motion;
 using Domain.Service;
 using Domain.Service.Battle;
@@ -13,8 +12,7 @@ namespace Domain.Infrastructure.Battle
         [SerializeField] private string idleState = "Frank_FS4_Idle_Stand_Loop";
         [SerializeField] private string hitstunState = "Frank_FS4_Hit_High_Front";
         [SerializeField] private string blockstunState = "Frank_FS4_Hit_High_Front";
-        
-        
+
         [Header("朝向表现")]
         [Tooltip("RotateY: 3D 模型用（负缩放会翻转蒙皮法线）。MirrorScaleX: 2D 骨骼/精灵用")]
         [SerializeField] private FacingStyle facingStyle = FacingStyle.RotateY;
@@ -99,6 +97,12 @@ namespace Domain.Infrastructure.Battle
  
         private void SyncAnimation(FighterState fighter)
         {
+            // 傀儡原则：播放头【完全】由逻辑帧驱动，Animator 自身不得自走时间。
+            // speed=0 是关键——否则 Animator 会按真实时间前飘、再被每帧 Play 拽回，
+            // 在 normalized 不变的场合（顿帧；受击 clip 播完但 hitstun 未结束的定格）
+            // 来回抖 = 闪烁。唯一需要自走的是 PlayLoose 的 CrossFade，那里再临时置回 1。
+            animator.speed = 0f;
+
             switch (fighter.Status)
             {
                 case FighterStatus.Attacking:
@@ -115,11 +119,26 @@ namespace Domain.Infrastructure.Battle
                 }
  
                 case FighterStatus.Hitstun:
-                    PlayLoose(hitstunState);
+                {
+                    // 受击已是正式招式：播它的 clip，并用受击招式帧进度(ReactionFrame)硬同步——
+                    // 与击退位移同一个驱动，表现与位移严丝合缝、不滑步（同招式/移动一套哲学）。
+                    string reactionId = fighter.CurrentReactionMoveId;
+                    if (!string.IsNullOrEmpty(reactionId) && fighter.ReactionTotalFrames > 0)
+                    {
+                        float n = Mathf.Clamp01(fighter.ReactionFrame / (float)fighter.ReactionTotalFrames);
+                        animator.Play(ResolveState(reactionId, hitstunState), 0, n);
+                        playingStateHash = 0;
+                    }
+                    else
+                    {
+                        // 无受击招式（类别未映射/None）→ 回退通用受击，按硬直窗口硬同步
+                        PlayStunSynced(hitstunState, fighter);
+                    }
                     break;
+                }
  
                 case FighterStatus.Blockstun:
-                    PlayLoose(blockstunState);
+                    PlayStunSynced(blockstunState, fighter);
                     break;
  
                 default:
@@ -156,10 +175,27 @@ namespace Domain.Infrastructure.Battle
  
             PlayLoose(idleState);
         }
- 
+
+        /// <summary>
+        /// 硬直动画硬同步：用逻辑硬直进度 (总−剩余)/总 驱动 clip 播放头，
+        /// 让受击/防御 clip 恰好铺满整段硬直窗口——与招式动画同构（逻辑帧是权威，
+        /// clip 长于硬直则压缩、短于硬直则拉伸）。这样绝不会「没播完就被 idle 截断」。
+        /// 想让受击看起来更久 → 调大该招的 HitstunFrames（同时也是连段/帧优势的平衡量）。
+        /// </summary>
+        private void PlayStunSynced(string stateName, FighterState fighter)
+        {
+            int hash = ResolveState(stateName, idleState);
+            float t = fighter.StunTotalFrames > 0
+                ? Mathf.Clamp01(1f - fighter.StunRemaining / (float)fighter.StunTotalFrames)
+                : 0f;
+            animator.Play(hash, 0, t);
+            playingStateHash = 0; // 硬同步：清空重入保护，与招式/移动一致
+        }
+
         /// <summary>非招式状态：不需要帧精确，用 CrossFade 平滑过渡，且避免每帧重入。</summary>
         private void PlayLoose(string stateName)
         {
+            animator.speed = 1f; // CrossFade 过渡/循环需要 Animator 自走时间（覆盖 SyncAnimation 顶部的 0）
             int hash = ResolveState(stateName, idleState);
             if (playingStateHash == hash) return;
             playingStateHash = hash;

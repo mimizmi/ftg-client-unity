@@ -43,6 +43,13 @@ namespace Domain.Infrastructure.Battle
  
         /// <summary>优先级：同一输入匹配到多条时取高者（超必 > 必杀 > 普通技）。</summary>
         public int Priority;
+
+        /// <summary>
+        /// 仅可作为取消/连段中出现，不能从中立态直接出。
+        /// 目标连的中段/收招（如 5LP→5LP→升拳 里那记"升拳"专属段）设 true，
+        /// 使它只在连里存在、不污染中立态招式池。默认 false = 中立态也可出（普通技/gatling 目标）。
+        /// </summary>
+        public bool CancelOnly;
  
         /// <summary>额外条件（气槽、血量等）。null = 无条件。</summary>
         public Func<FighterState, bool> Condition;
@@ -109,7 +116,8 @@ namespace Domain.Infrastructure.Battle
  
             if (cancelSource == null)
             {
-                // 中立态出招：任何条目都可以（CancelFrom 不限制中立出招）
+                // 中立态出招：CancelFrom 不限制中立出招；但 CancelOnly 的招（目标连专属段）不许从中立出
+                if (e.CancelOnly) return false;
             }
             else
             {

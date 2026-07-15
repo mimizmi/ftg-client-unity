@@ -3188,6 +3188,11 @@ MonoBehaviour:
   idleState: Frank_FS4_Idle_Stand_Loop
   hitstunState: Frank_FS4_Hit_High_Front
   blockstunState: Frank_FS4_Hit_High_Front
+  reactionStates:
+  - Reaction: 1
+    State: Frank_FS4_Hit_High_Front
+  - Reaction: 2
+    State: Frank_FS4_Hit_Mid_Front
   facingStyle: 0
   facingRightYaw: 90
   facingLeftYaw: 270
