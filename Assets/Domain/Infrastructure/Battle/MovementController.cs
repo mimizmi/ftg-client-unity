@@ -1,6 +1,5 @@
 ﻿using System;
 using Domain.Infrastructure.Input;
-using Domain.Service;
 using UnityEngine;
 
 namespace Domain.Infrastructure.Battle
@@ -24,7 +23,7 @@ namespace Domain.Infrastructure.Battle
     public sealed class MovementController
     {
         private readonly MovementConfig config;
-        private readonly FightingInputController input;
+        private readonly IInputSeat input;
         private readonly Func<string, MoveData> resolveMove;
 
         public MovementState State { get; private set; } = MovementState.Idle;
@@ -42,7 +41,7 @@ namespace Domain.Infrastructure.Battle
         private bool motionMirrored;  // 起始瞬间锁定的朝向，保证 cross-up 不改变已出去的轨迹
         private bool wasUpLastFrame;  // 跳跃边沿检测：按住上不放不应连发跳
 
-        public MovementController(MovementConfig config, FightingInputController input, Func<string, MoveData> resolveMove)
+        public MovementController(MovementConfig config, IInputSeat input, Func<string, MoveData> resolveMove)
         {
             this.config = config;
             this.input = input;
@@ -87,6 +86,9 @@ namespace Domain.Infrastructure.Battle
                 switch (State)
                 {
                     case MovementState.Idle:
+                    case MovementState.CrouchEnter: // 过渡是纯视觉，不锁操作——锁了蹲技就慢半拍
+                    case MovementState.Crouch:
+                    case MovementState.CrouchExit:
                     case MovementState.WalkForward:
                     case MovementState.WalkBackward:
                     case MovementState.Run:
@@ -101,12 +103,8 @@ namespace Domain.Infrastructure.Battle
             }
         }
  
-        /// <summary>防御只在地面且非移动锁定帧时成立（空中不可防，街霸式设定）。</summary>
-        public bool CanGuard =>
-            State == MovementState.Idle
-            || State == MovementState.WalkForward
-            || State == MovementState.WalkBackward;
- 
+        // 注：原 CanGuard 已随防御机制一并移除（本作无防御，见 CollisionResolver 拼招层）。
+
         /// <summary>供 FighterView 播动画：当前移动招式的 clip 名（= MoveId = Animator State）。</summary>
         public string MotionClipId => IsAirDashing ? airDash.MoveId : CurrentMotion?.MoveId;
  
@@ -157,7 +155,16 @@ namespace Domain.Infrastructure.Battle
                 case MovementState.Idle:
                     TickIdleFrame();
                     return Grounded(dir, facingRight);
- 
+
+                case MovementState.CrouchEnter:
+                    return CrouchingEnter(dir, facingRight);
+
+                case MovementState.Crouch:
+                    return Crouching(dir, facingRight);
+
+                case MovementState.CrouchExit:
+                    return CrouchingExit(dir, facingRight);
+
                 case MovementState.WalkForward:
                 case MovementState.WalkBackward:
                 case MovementState.Run:
@@ -199,10 +206,16 @@ namespace Domain.Infrastructure.Battle
                     return CurrentFrameMotion();
             }
  
+            // ---- 下蹲：必须先于行走判定 ----
+            // 斜下(1/3)也是蹲（IsForward(3)/IsBackward(1) 为 true，不先拦会误入走路，
+            // 与 FighterState.CurrentStance 的 1/2/3=Crouching 判定矛盾）。蹲姿无位移。
+            if (IsDown(dir) && StartCrouch(facingRight))
+                return Vector2.zero;
+
             // ---- 行走 ----
             if (IsForward(dir) && StartMotion(config.WalkForwardId, MovementState.WalkForward, facingRight))
                 return CurrentFrameMotion();
- 
+
             if (IsBackward(dir) && StartMotion(config.WalkBackwardId, MovementState.WalkBackward, facingRight))
                 return CurrentFrameMotion();
  
@@ -211,6 +224,125 @@ namespace Domain.Infrastructure.Battle
             return Vector2.zero;
         }
         
+        /// <summary>
+        /// 进蹲入口：有下蹲过渡 clip 则先播过渡（站→蹲），没配/缺数据则直接进循环（可降级）。
+        /// 三段式：CrouchEnter(一次性) → Crouch(循环) → CrouchExit(一次性) → Grounded。
+        /// </summary>
+        private bool StartCrouch(bool facingRight)
+        {
+            if (!string.IsNullOrEmpty(config.CrouchEnterId)
+                && resolveMove(config.CrouchEnterId) != null
+                && StartMotion(config.CrouchEnterId, MovementState.CrouchEnter, facingRight))
+                return true;
+
+            return StartMotion(config.CrouchId, MovementState.Crouch, facingRight);
+        }
+
+        /// <summary>
+        /// 下蹲过渡（站→蹲）。全程零位移、可出招（过渡纯视觉）。
+        /// 跳跃优先：按上立刻放弃过渡回 Grounded 起跳——演出永远给操作让路。
+        /// 中途松开下：起身动画从【对称位置】接续（蹲到 30% 就从起身的 70% 开始），姿态不跳变。
+        /// </summary>
+        private Vector2 CrouchingEnter(byte dir, bool facingRight)
+        {
+            if (IsUp(dir))
+            {
+                Stop();
+                return Grounded(dir, facingRight);
+            }
+
+            if (!IsDown(dir))
+            {
+                MoveData exit = resolveMove(config.CrouchExitId);
+                if (exit == null)
+                {
+                    Stop();
+                    return Grounded(dir, facingRight);
+                }
+                int frame = MirrorProgress(CurrentMotion, MotionFrame, exit);
+                StartMotion(config.CrouchExitId, MovementState.CrouchExit, facingRight);
+                MotionFrame = frame;
+                return Vector2.zero;
+            }
+
+            MotionFrame++;
+            if (MotionFrame > CurrentMotion.TotalFrames)
+                StartMotion(config.CrouchId, MovementState.Crouch, facingRight); // 蹲到底 → 进循环
+            return Vector2.zero;
+        }
+
+        /// <summary>蹲姿循环：零位移。松开下 → 起身过渡；按上 → 立刻起跳（演出让路）。</summary>
+        private Vector2 Crouching(byte dir, bool facingRight)
+        {
+            if (!IsDown(dir))
+            {
+                if (!IsUp(dir))
+                {
+                    MoveData exit = resolveMove(config.CrouchExitId);
+                    if (exit != null)
+                    {
+                        StartMotion(config.CrouchExitId, MovementState.CrouchExit, facingRight);
+                        return Vector2.zero;
+                    }
+                }
+                // 按上（跳跃优先）或没配起身过渡 → 直接回 Grounded 重新判定
+                Stop();
+                return Grounded(dir, facingRight);
+            }
+
+            MotionFrame++;
+            if (MotionFrame > CurrentMotion.TotalFrames) MotionFrame = 1; // 循环
+            return Vector2.zero; // 蹲姿不产生位移（即使 clip 带杂散 RootMotion 也不吃）
+        }
+
+        /// <summary>
+        /// 起身过渡（蹲→站）。播完回 Grounded（当帧即可走/跳/再判定）。
+        /// 中途再按下：下蹲动画从对称位置接回去；按上：立刻起跳。
+        /// </summary>
+        private Vector2 CrouchingExit(byte dir, bool facingRight)
+        {
+            if (IsUp(dir))
+            {
+                Stop();
+                return Grounded(dir, facingRight);
+            }
+
+            if (IsDown(dir))
+            {
+                MoveData enter = resolveMove(config.CrouchEnterId);
+                if (enter != null)
+                {
+                    int frame = MirrorProgress(CurrentMotion, MotionFrame, enter);
+                    StartMotion(config.CrouchEnterId, MovementState.CrouchEnter, facingRight);
+                    MotionFrame = frame;
+                }
+                else
+                {
+                    StartMotion(config.CrouchId, MovementState.Crouch, facingRight);
+                }
+                return Vector2.zero;
+            }
+
+            MotionFrame++;
+            if (MotionFrame > CurrentMotion.TotalFrames)
+            {
+                Stop();
+                return Grounded(dir, facingRight); // 起身完成，当帧恢复地面判定
+            }
+            return Vector2.zero;
+        }
+
+        /// <summary>
+        /// 把当前过渡的进度镜像到反向过渡上：进度 p 处改主意 → 反向动画从 (1-p) 处接续。
+        /// 前提是两段过渡互为倒放（下蹲/起身通常如此），姿态即可无缝衔接。
+        /// </summary>
+        private static int MirrorProgress(MoveData from, int frame, MoveData to)
+        {
+            if (from == null || to == null || from.TotalFrames <= 0 || to.TotalFrames <= 0) return 1;
+            float p = Mathf.Clamp01(frame / (float)from.TotalFrames);
+            return Mathf.Clamp(Mathf.RoundToInt((1f - p) * to.TotalFrames), 1, to.TotalFrames);
+        }
+
         private void TickIdleFrame()
         {
             if (CurrentMotion == null) return;
@@ -233,9 +365,14 @@ namespace Domain.Infrastructure.Battle
         /// </summary>
         private Vector2 Looping(byte dir, bool facingRight)
         {
-            bool keep = State == MovementState.WalkForward ? IsForward(dir)
-                : State == MovementState.WalkBackward ? IsBackward(dir)
-                : IsForward(dir); // Run
+            // 按到下方向（含斜下 1/3）退出行走转蹲——与 CurrentStance 的 1/2/3=蹲 判定保持一致。
+            // 按到上方向（含斜上 7/9）也必须退出：IsForward(9)/IsBackward(7) 为 true，
+            // 不拦的话走路会把跳跃"吃掉"（跳跃检测只在 Grounded 里）——
+            // 这正是"走路中按上跳不起来、必须同帧按前+上"的元凶。退出当帧即进 Grounded 起跳。
+            bool keep = !IsDown(dir) && !IsUp(dir)
+                && (State == MovementState.WalkForward ? IsForward(dir)
+                    : State == MovementState.WalkBackward ? IsBackward(dir)
+                    : IsForward(dir)); // Run
  
             if (!keep)
             {
@@ -279,6 +416,13 @@ namespace Domain.Infrastructure.Battle
         /// </summary>
         private Vector2 Jumping(byte dir, bool facingRight)
         {
+            // ---- 起跳预备期（仍在地面）：跳向可修正（SF 式宽容）----
+            // 起跳边沿那一帧锁死方向的话，"先按上、慢几帧补前"只能出垂直跳。
+            // 离地前每帧重读方向、切换到对应的跳跃招式（三种跳的预备帧数一致，帧号直接续），
+            // 离地（进入 Active）后轨迹锁定，空中不可再改。
+            if (!IsAirDashing && Phase == MovePhase.Startup)
+                RetargetJump(dir);
+
             // ---- 空中冲刺进行中：冻结跳跃帧 → 动画停在当前姿势（滞空感是免费的）----
             if (IsAirDashing)
             {
@@ -332,7 +476,24 @@ namespace Domain.Infrastructure.Battle
         }
  
         // ===================== 辅助 =====================
- 
+
+        /// <summary>
+        /// 起跳预备期内按当前方向重定跳向。dir 已按朝向归一化（Tick 里做的），
+        /// 前分量(6/3/9)→前跳，后分量(4/1/7)→后跳，其余→垂直跳；
+        /// motionMirrored 维持起跳瞬间锁定的朝向不变（cross-up 不改变轨迹的规则不破坏）。
+        /// </summary>
+        private void RetargetJump(byte dir)
+        {
+            string id = IsForward(dir) ? config.JumpForwardId
+                : IsBackward(dir) ? config.JumpBackwardId
+                : config.JumpNeutralId;
+            if (CurrentMotion != null && CurrentMotion.MoveId == id) return;
+
+            MoveData move = resolveMove(id);
+            if (move == null) return; // 缺数据时保持原跳向，不炸
+            CurrentMotion = move;     // MotionFrame 保留：预备帧数三跳一致，帧号直接续
+        }
+
         private bool StartMotion(string moveId, MovementState state, bool facingRight)
         {
             if (string.IsNullOrEmpty(moveId)) return false;
@@ -380,16 +541,29 @@ namespace Domain.Infrastructure.Battle
         }
  
         private static bool IsUp(byte dir) => dir == 7 || dir == 8 || dir == 9;
+        private static bool IsDown(byte dir) => dir == 1 || dir == 2 || dir == 3;
         private static bool IsForward(byte dir) => dir == 6 || dir == 3 || dir == 9;
         private static bool IsBackward(byte dir) => dir == 4 || dir == 1 || dir == 7;
  
         /// <summary>受击/出招打断移动。跳跃由调用方保护（空中被打仍在空中）。</summary>
         public void Reset()
         {
-            Stop();
             airDash = null;
             airDashFrame = 0;
             airDashesUsed = 0;
+
+            // 蹲姿家族【保留】而非清空："我在蹲"的记忆要活过出招/受击的打断。
+            // 清掉的话，蹲攻击收招那一帧 Grounded 会当作"刚开始蹲"，从第 1 帧重播
+            // 站→蹲过渡（首帧是站立姿势）→ 画面闪一帧站起再蹲下去。
+            // 保留后：恢复可行动时下仍按着 → 蹲循环原地续播；已松开 → 恢复首帧
+            // 的 Crouching()/CrouchingEnter() 自会走起身/退出路径，两种情况都正确。
+            // 打断期间该状态被冻结（不推进、零位移），姿态画面由攻击/受击动画接管。
+            if (State == MovementState.Crouch
+                || State == MovementState.CrouchEnter
+                || State == MovementState.CrouchExit)
+                return;
+
+            Stop();
             // 注意：不清 wasUpLastFrame。清成 false 的话，玩家手还按着上时，
             // 恢复可行动的当帧会被判为"刚按下" → 意外起跳。必须松手重按才能跳。
         }

@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using Domain.Infrastructure.Input;
-using Domain.Service;
 using UnityEngine;
 
 namespace Domain.Infrastructure.Battle
@@ -44,7 +43,7 @@ namespace Domain.Infrastructure.Battle
         public bool FacingRight = true;
         public int Health = 1000;
  
-        private readonly FightingInputController input;
+        private readonly IInputSeat input;
         private readonly MoveTable moveTable;
         private readonly Dictionary<string, MoveData> moves = new Dictionary<string, MoveData>();
  
@@ -106,7 +105,7 @@ namespace Domain.Infrastructure.Battle
         /// <summary>出招瞬间广播——对手侧"看到对方起手"的反应系统订阅这里，而不是去读按键。</summary>
         public event Action<FighterState, MoveData> MoveStarted;
  
-        public FighterState(FightingInputController input, MoveTable moveTable, MovementConfig movementConfig)
+        public FighterState(IInputSeat input, MoveTable moveTable, MovementConfig movementConfig)
         {
             this.input = input;
             this.moveTable = moveTable;
@@ -134,7 +133,7 @@ namespace Domain.Infrastructure.Battle
  
         // ---- 对外只读视图 ----
         public InputBuffer InputHistory => input.Buffer;   // 拒止/拆投回看 & 假人读意图
-        public FightingInputController InputController => input;
+        public IInputSeat InputController => input;
         public CommandQueue Commands => input.Commands;
  
         public MovePhase Phase =>
@@ -281,36 +280,47 @@ namespace Domain.Infrastructure.Battle
         }
  
         /// <summary>
-        /// 连招取消：当前招【已命中或被防】且处于取消窗口内时，可被新招打断。
-        /// 取消窗口 = 从判定帧开始到招式结束（CancelWindowFrom 可按招微调）。
+        /// 招式进行中的取消判定。两条通道，相位决定走哪条：
+        ///
+        /// 【前摇 = 变招】Startup 期间（还没打出去）无需命中即可切成【不同】的招——
+        /// 武术的试探招/虚招：起手骗对方反应，中途改主意。能否变、变成什么
+        /// 完全由招式表 FeintFrom 数据决定（默认不可变，避免重招起手零风险白拉）。
+        ///
+        /// 【Active/后摇 = 命中取消】当前招【已命中或拼中】且处于取消窗口内时可续招 → 连招。
         /// 未命中（放空）不可取消——这是格斗游戏的基本公平性：空挥要吃后摇。
         /// </summary>
         private void TryCancel()
         {
+            if (Phase == MovePhase.Startup)
+            {
+                TryAct(CurrentMove.MoveId, CancelKind.Feint);
+                return;
+            }
+
             if (!moveConnected) return; // 没打中，不给取消
             if (CurrentMove.CancelFrom > 0 && MoveFrame < CurrentMove.CancelFrom) return;
 
-            TryAct(CurrentMove.MoveId); // 以当前招为取消来源解析新招
+            TryAct(CurrentMove.MoveId, CancelKind.OnHit); // 以当前招为取消来源解析新招
         }
- 
-        private void TryAct(string cancelSource)
+
+        private void TryAct(string cancelSource, CancelKind cancelKind = CancelKind.None)
         {
             // ① 搓招指令（队列带优先级与预输入窗口）→ 经招式表解析成具体招式
             if (input.Commands.TryPeek(out DetectedCommand cmd,
                     c => moveTable.ResolveCommand(
-                        c.Id, input.Buffer.Latest.Pressed, CurrentStance, cancelSource, this) != null))
+                        c.Id, input.Buffer.Latest.Pressed, CurrentStance, cancelSource, cancelKind, this) != null))
             {
                 string moveId = moveTable.ResolveCommand(
-                    cmd.Id, input.Buffer.Latest.Pressed, CurrentStance, cancelSource, this);
+                    cmd.Id, input.Buffer.Latest.Pressed, CurrentStance, cancelSource, cancelKind, this);
                 input.Commands.TryConsume(out _, c => c.Id == cmd.Id); // 确认可出招后才消费
                 StartMove(moveId);
                 return;
             }
- 
+
             InputFrame latest = input.Buffer.Latest;
- 
-            // ② 组合键投（LP+LK 同时按下）。投不能取消出招
-            if (cancelSource == null)
+
+            // ② 组合键投（LP+LK 同时按下）。投不能从取消/变招里出，只能中立态出
+            if (cancelKind == CancelKind.None)
             {
                 bool throwInput =
                     ((latest.Pressed & ButtonMask.LP) != 0 && (latest.Held & ButtonMask.LK) != 0) ||
@@ -335,7 +345,7 @@ namespace Domain.Infrastructure.Battle
             if (press != ButtonMask.None)
             {
                 string moveId = moveTable.ResolveButton(
-                    press, CurrentStance, cancelSource, this);
+                    press, CurrentStance, cancelSource, cancelKind, this);
                 if (moveId != null)
                 {
                     bufferedPress = ButtonMask.None; // 兑现即消费，避免同一次按下连出两招
@@ -384,26 +394,9 @@ namespace Domain.Infrastructure.Battle
             Status = FighterStatus.Neutral;
         }
 
-        /// <summary>
-        /// 防御成立检查：按住后方向，且方向档位与攻击位置属性匹配。
-        /// Low 必须蹲防（1），Overhead 必须站防（4），Mid 站蹲皆可。
-        /// </summary>
-        public bool GuardCheck(AttackAttribute attack)
-        {
-            if (Status != FighterStatus.Neutral && Status != FighterStatus.Blockstun) return false;
-
-            // 移动状态限制：空中、冲刺、起跳预备、落地硬直中都不能防御——
-            // 这正是"跳跃有风险"和"冲刺有风险"的来源
-            if (!Movement.CanGuard) return false;
-
-            byte dir = FacingRight
-                ? input.Buffer.Latest.Direction
-                : Numpad.Mirror(input.Buffer.Latest.Direction);
-
-            if ((attack & AttackAttribute.Low) != 0) return dir == 1;
-            if ((attack & AttackAttribute.Overhead) != 0) return dir == 4;
-            return dir == 4 || dir == 1;
-        }
+        // 注：本作【没有防御机制】——原 GuardCheck（按住后方向格挡）已整体移除。
+        // 防御的位置由"拼招"取代：双方攻击框相遇即互相抵消（见 CollisionResolver.TestClash）。
+        // 按住后方向就只是走位后撤，空间即防御。
 
         // ---- 由 CollisionResolver 调用的结果施加 ----
 

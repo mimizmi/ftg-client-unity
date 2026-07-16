@@ -1,0 +1,19 @@
+{
+    "name": "FTG.Runtime",
+    "rootNamespace": "Domain",
+    "references": [
+        "FTG.Core",
+        "Unity.InputSystem",
+        "Loxodon.Framework",
+        "Loxodon.Log"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

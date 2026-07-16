@@ -1,0 +1,47 @@
+# CI：EditMode 测试（GameCI）。
+# 需要在仓库 Settings → Secrets and variables → Actions 配置三个机密：
+#   UNITY_LICENSE  — Unity 个人版许可证文件(.ulf)内容（https://game.ci/docs/github/activation）
+#   UNITY_EMAIL    — Unity 账号邮箱
+#   UNITY_PASSWORD — Unity 账号密码
+# 未配置机密前，此工作流会失败在激活步骤——属预期，配好即绿。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  editmode-tests:
+    name: EditMode Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      # Library 缓存：首跑 ~20min 导入，之后分钟级
+      - name: Cache Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-${{ hashFiles('Packages/manifest.json', 'ProjectSettings/ProjectVersion.txt') }}
+          restore-keys: Library-
+
+      - name: Run EditMode tests
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          testMode: editmode
+          artifactsPath: test-results
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: test-results

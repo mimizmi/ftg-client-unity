@@ -8,8 +8,8 @@ namespace Domain.Infrastructure.Battle
     {
         Hit,            // 普通命中
         CounterHit,     // 对方出招中被打（前摇/后摇）→ 硬直加成，确反奖励
-        Blocked,        // 防御成立
-        Parried,        // 拒止：碰撞帧回看到守方精确输入
+        Clashed,        // 拼招：双方攻击框相遇，两招互相抵消（本作无防御，这就是"格挡"）
+        Parried,        // 拒止：碰撞帧回看到守方精确输入（默认关闭）
         CounterCaught,  // 被当身接住：攻守互换
         Thrown,         // 被投
         ThrowTeched,    // 拆投成功
@@ -30,8 +30,11 @@ namespace Domain.Infrastructure.Battle
     /// <summary>
     /// 碰撞与攻防裁决。每逻辑帧在双方状态推进之后调用一次。
     ///
-    /// 关键设计：所有"反制规则"集中在 Judge() 这一条按优先级排列的管线里：
-    ///     ① 无敌 → ② 当身 → ③ 投/拆投 → ④ 拒止 → ⑤ 防御 → ⑥ 命中（含 CH 判定）
+    /// 本作【没有防御】：按住后方向只是走位，空间即防御。"格挡"的位置由拼招取代——
+    /// 双方攻击框相遇即两招互相抵消（Resolve 顶部的 ⓪ 层，优先于一切命中裁决）。
+    ///
+    /// 关键设计：所有"反制规则"集中在一条按优先级排列的管线里：
+    ///     ⓪ 拼招 → ① 无敌 → ② 当身 → ③ 投/拆投 → ④ 拒止(默认关) → ⑤ 命中(含 CH 判定)
     /// 顺序即规则（例：当身排在拒止前 = 当身状态下不会触发拒止）。
     /// 加新反制机制 = 在管线里插一层，而不是在角色代码里到处埋 if。
     ///
@@ -42,23 +45,40 @@ namespace Domain.Infrastructure.Battle
     /// </summary>
     public sealed class CollisionResolver
     {
-        // ---- 拒止配置（做成配置便于手感调优/按角色差异化）----
-        public bool ParryEnabled = true;
+        // ---- 拼招(clash)配置：无防御设计的核心 ----
+        public bool ClashEnabled = true;
+        public int ClashHitstop = 16;      // 拼招定格：兵刃相接的演出重量，比普通命中更重
+
+        // ---- 拒止配置（属防御系机制，与"无防御"设计冲突 → 默认关；想试 SF3 手感再开）----
+        public bool ParryEnabled = false;
         public int ParryWindow = 8;        // 碰撞前 N 帧内轻点方向有效
         public bool ParryForward = true;   // true=前拒止(SF3 式)，false=后拒止(JD 式)
         public int ThrowTechWindow = 5;    // 拆投窗口
         public float CounterHitDamageScale = 1.2f;
         public int CounterHitBonusStun = 8;
 
-        // ---- 顿帧(hitstop)：命中定格帧数。命中是主手调旋钮，防御/CH 由它派生 ----
+        // ---- 顿帧(hitstop)：命中定格帧数。命中是主手调旋钮，CH 由它派生 ----
         public int HitHitstop = 8;              // 命中顿帧：盯这一个数手调（脆↔沉）
-        public float BlockHitstopScale = 0.7f;  // 防御 = 命中 ×此（防比命中轻）
         public int CounterHitBonus = 4;         // CH = 命中 + 此（确反重奖）
         public int ParryHitstop = 16;           // 拒止定格自成一档（SF3 式闪光演出）
 
         public void Resolve(int frame, FighterState p1, FighterState p2, List<HitEvent> results)
         {
             results.Clear();
+
+            // ⓪ 拼招：双方攻击框相遇 → 两招互相抵消 + 双方定格 + 双方取消窗同开。
+            // 本帧不再裁定命中（拼招覆盖一切——即使同帧攻击框也扫到了对方身体）。
+            if (ClashEnabled && TestClash(p1, p2))
+            {
+                var clash = new HitEvent
+                {
+                    Frame = frame, Attacker = p1, Defender = p2,
+                    Move = p1.CurrentMove, Outcome = DefenseOutcome.Clashed,
+                };
+                results.Add(clash);
+                Apply(clash);
+                return;
+            }
 
             // 先对称检测再统一施加：同帧互中 = 相杀(trade)，两边都吃结果
             bool p1HitsP2 = TestOverlap(p1, p2);
@@ -73,6 +93,34 @@ namespace Domain.Infrastructure.Battle
 
         private readonly List<Box> attackBoxes = new List<Box>(4);
         private readonly List<Box> defendBoxes = new List<Box>(4);
+
+        /// <summary>
+        /// 拼招检测：双方同时处于判定期（Active 且本招尚未命中）且攻击框相互重叠。
+        /// 只有打击技参与拼招——投是贴身抓取，没有"兵刃相接"的语义。
+        /// 拼招事件的 Attacker/Defender 只是记名（p1/p2），双方地位完全对等。
+        /// </summary>
+        private bool TestClash(FighterState a, FighterState b)
+        {
+            if (!a.CanMoveConnect || !b.CanMoveConnect) return false;
+            if ((a.CurrentMove.Attributes & AttackAttribute.Strike) == 0) return false;
+            if ((b.CurrentMove.Attributes & AttackAttribute.Strike) == 0) return false;
+
+            a.CurrentMove.CollectBoxes(a.MoveFrame, BoxKind.Hit, attackBoxes);
+            if (attackBoxes.Count == 0) return false;
+            b.CurrentMove.CollectBoxes(b.MoveFrame, BoxKind.Hit, defendBoxes);
+            if (defendBoxes.Count == 0) return false;
+
+            for (int i = 0; i < attackBoxes.Count; i++)
+            {
+                Rect ra = attackBoxes[i].ToWorld(a.Position, a.FacingRight);
+                for (int j = 0; j < defendBoxes.Count; j++)
+                {
+                    Rect rb = defendBoxes[j].ToWorld(b.Position, b.FacingRight);
+                    if (ra.Overlaps(rb)) return true;
+                }
+            }
+            return false;
+        }
 
         /// <summary>
         /// 攻击框 vs 受击框。两者都来自 BoxTracks（可视化编辑、关键帧插值），
@@ -142,14 +190,8 @@ namespace Domain.Infrastructure.Battle
                 }
             }
 
-            // ⑤ 防御：方向档位 vs 攻击位置属性
-            if (defender.GuardCheck(move.Attributes))
-            {
-                ev.Outcome = DefenseOutcome.Blocked;
-                return ev;
-            }
-
-            // ⑥ 命中。CH 判定 = 守方正处于自己招式的前摇/后摇（读状态层，不读按键）
+            // ⑤ 命中。本作没有防御分支——没拼上、没拒止、没无敌就是挨打。
+            // CH 判定 = 守方正处于自己招式的前摇/后摇（读状态层，不读按键）
             bool counterHit =
                 (defender.Status == FighterStatus.Attacking
                     && (defender.Phase == MovePhase.Startup || defender.Phase == MovePhase.Recovery))
@@ -175,8 +217,12 @@ namespace Domain.Infrastructure.Battle
                         move.HitstunFrames + CounterHitBonusStun, move.Reaction);
                     break;
 
-                case DefenseOutcome.Blocked:
-                    ev.Defender.ApplyBlockstun(move.BlockstunFrames);
+                case DefenseOutcome.Clashed:
+                    // 两招互相消耗（moveConnected 置位 → 本招不再能命中），同时这正是
+                    // 命中取消的门闩——拼中即视为"接上了"，双方都可立刻取消续招/变招，
+                    // 谁反应快谁抢下一手。无伤、无硬直，定格在 ApplyHitstop 统一给。
+                    ev.Attacker.MarkMoveConnected();
+                    ev.Defender.MarkMoveConnected();
                     break;
 
                 case DefenseOutcome.Parried:
@@ -205,7 +251,7 @@ namespace Domain.Infrastructure.Battle
 
         /// <summary>
         /// 按结果给攻防双方置入顿帧。命中/CH 可被 MoveData.Hitstop 覆盖；
-        /// 防御/拒止用各自默认；投/拆投/当身 v1 不加顿帧（有各自演出流程）。
+        /// 拼招/拒止用各自默认；投/拆投/当身 v1 不加顿帧（有各自演出流程）。
         /// </summary>
         private void ApplyHitstop(HitEvent ev)
         {
@@ -215,7 +261,7 @@ namespace Domain.Infrastructure.Battle
             {
                 case DefenseOutcome.Hit:        frames = hit; break;
                 case DefenseOutcome.CounterHit: frames = hit + CounterHitBonus; break;
-                case DefenseOutcome.Blocked:    frames = Mathf.RoundToInt(hit * BlockHitstopScale); break;
+                case DefenseOutcome.Clashed:    frames = ClashHitstop; break;
                 case DefenseOutcome.Parried:    frames = ParryHitstop; break;
                 default: return; // Thrown / ThrowTeched / CounterCaught：v1 不加顿帧
             }

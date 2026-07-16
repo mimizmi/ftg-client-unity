@@ -8,7 +8,7 @@ using Domain.Infrastructure.Motion;
 
 namespace Domain.Service
 {
-    public class FightingInputController : MonoBehaviour
+    public class FightingInputController : MonoBehaviour, IInputSeat
     {
         [SerializeField] private FTGInputSO inputAssets;
         [Header("Settings")] 
@@ -17,8 +17,8 @@ namespace Domain.Service
         private const float MaxAccumulated = 0.25f;
         private float accumulator;
         
-        [Header("Character")]
-        public bool FacingRight = true;
+        /// <summary>朝向。战斗中由 BattleLoop 每帧回写（见 IInputSeat）。</summary>
+        public bool FacingRight { get; set; } = true;
         public MotionDetector Detector { get; } = new MotionDetector();
         public CommandQueue Commands { get; } = new CommandQueue();
         private readonly List<MotionPattern> detectResults = new List<MotionPattern>(4);

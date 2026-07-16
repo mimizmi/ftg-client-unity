@@ -10,6 +10,19 @@ namespace Domain.Infrastructure.Battle
         Crouching,
         Airborne,
     }
+
+    /// <summary>
+    /// 取消通道：解析出招时处于哪种取消语境。取消分两条通道，规则完全不同：
+    /// - OnHit（后摇通道）：当前招已命中/拼中，从判定帧起可取消续招 → 连招。空挥不可。
+    /// - Feint（前摇通道）：当前招仍在 Startup（未 Active），无需命中即切换成【不同】的招
+    ///   → 武术的变招/试探招。能变成什么由 MoveEntry.FeintFrom 数据决定。
+    /// </summary>
+    public enum CancelKind : byte
+    {
+        None,   // 中立态出招（不取消任何招）
+        OnHit,  // 命中取消（后摇通道）
+        Feint,  // 变招（前摇通道）
+    }
      /// <summary>
     /// 招式表条目：把"输入层的指令"翻译成"战斗层的具体招式"。
     ///
@@ -35,11 +48,19 @@ namespace Domain.Infrastructure.Battle
         public Stance Stance = Stance.Standing;
  
         /// <summary>
-        /// 取消来源：本招可以从哪些招式【命中/被防后】直接取消出招（连招的核心规则）。
+        /// 命中取消来源（后摇通道）：本招可以从哪些招式【命中/拼中后】直接取消出招（连招的核心规则）。
         /// null/空 = 只能在中立态出。非空 = 既可中立出，也可从列表中的招取消出。
         /// 例：236P 的 CancelFrom = ["5LP", "2LP"] → 轻拳命中后可取消接波动。
         /// </summary>
         public string[] CancelFrom;
+
+        /// <summary>
+        /// 变招来源（前摇通道）：本招可以在哪些招式的【前摇（Startup）】期间直接切出，
+        /// 【无需命中】——武术的变招/试探招。与 CancelFrom 互不相干：
+        /// CancelFrom 管"打中之后接什么"（连招），FeintFrom 管"还没打出去时改主意"（虚实）。
+        /// 变招必须"变"：解析时强制目标 ≠ 来源招，原招不能自我重启（否则无限白拉前摇）。
+        /// </summary>
+        public string[] FeintFrom;
  
         /// <summary>优先级：同一输入匹配到多条时取高者（超必 > 必杀 > 普通技）。</summary>
         public int Priority;
@@ -78,54 +99,64 @@ namespace Domain.Infrastructure.Battle
         }
  
         /// <summary>
-        /// 用搓招指令解析招式。cancelSource 为 null 表示中立态出招；
-        /// 非 null 表示正在取消（当前招已命中，处于取消窗口内）。
+        /// 用搓招指令解析招式。cancelSource 为 null（kind=None）表示中立态出招；
+        /// 非 null 表示正在取消——cancelKind 决定走哪条通道（命中取消 / 变招）。
         /// </summary>
         public string ResolveCommand(string commandId, ButtonMask pressed,
-            Stance stance, string cancelSource, FighterState fighter)
+            Stance stance, string cancelSource, CancelKind cancelKind, FighterState fighter)
         {
             for (int i = 0; i < entries.Count; i++)
             {
                 MoveEntry e = entries[i];
                 if (e.CommandId != commandId) continue;
-                if (!Match(e, pressed, stance, cancelSource, fighter)) continue;
+                if (!Match(e, pressed, stance, cancelSource, cancelKind, fighter)) continue;
                 return e.MoveId;
             }
             return null;
         }
- 
+
         /// <summary>用裸按键解析普通技（无 CommandId 的条目）。</summary>
         public string ResolveButton(ButtonMask pressed, Stance stance,
-            string cancelSource, FighterState fighter)
+            string cancelSource, CancelKind cancelKind, FighterState fighter)
         {
             for (int i = 0; i < entries.Count; i++)
             {
                 MoveEntry e = entries[i];
                 if (!string.IsNullOrEmpty(e.CommandId)) continue;
-                if (!Match(e, pressed, stance, cancelSource, fighter)) continue;
+                if (!Match(e, pressed, stance, cancelSource, cancelKind, fighter)) continue;
                 return e.MoveId;
             }
             return null;
         }
- 
+
         private static bool Match(MoveEntry e, ButtonMask pressed, Stance stance,
-            string cancelSource, FighterState fighter)
+            string cancelSource, CancelKind cancelKind, FighterState fighter)
         {
             if (e.Stance != stance) return false;
             if (e.Buttons != ButtonMask.None && (pressed & e.Buttons) == 0) return false;
- 
-            if (cancelSource == null)
+
+            switch (cancelKind)
             {
-                // 中立态出招：CancelFrom 不限制中立出招；但 CancelOnly 的招（目标连专属段）不许从中立出
-                if (e.CancelOnly) return false;
+                case CancelKind.None:
+                    // 中立态出招：CancelFrom/FeintFrom 不限制中立出招；
+                    // 但 CancelOnly 的招（目标连专属段）不许从中立出
+                    if (e.CancelOnly) return false;
+                    break;
+
+                case CancelKind.OnHit:
+                    // 命中取消（后摇通道）：来源招必须在本条目的取消来源列表里
+                    if (e.CancelFrom == null || Array.IndexOf(e.CancelFrom, cancelSource) < 0)
+                        return false;
+                    break;
+
+                case CancelKind.Feint:
+                    // 变招（前摇通道）：来源招必须在变招来源列表里，且必须"变"成不同招
+                    if (e.FeintFrom == null || Array.IndexOf(e.FeintFrom, cancelSource) < 0)
+                        return false;
+                    if (e.MoveId == cancelSource) return false;
+                    break;
             }
-            else
-            {
-                // 取消出招：必须在本条目的取消来源列表里
-                if (e.CancelFrom == null || Array.IndexOf(e.CancelFrom, cancelSource) < 0)
-                    return false;
-            }
- 
+
             return e.Condition == null || e.Condition(fighter);
         }
     }

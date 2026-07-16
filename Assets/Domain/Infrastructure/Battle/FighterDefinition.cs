@@ -105,13 +105,20 @@ namespace Domain.Infrastructure.Battle
                 MoveEntries = new[]
                 {
                     // --- 普通技：同一按键，姿态决定招式（站/蹲各一套动画）---
-                    // CancelFrom：命中/被防后可从列出的招取消出 → gatling 连段（去僵硬的核心）。
-                    // 这里让 LP↔LK 互为取消来源：LP 命中可取消接 LK，反之亦然（轻攻击 chain）。
+                    // CancelFrom（后摇通道）：命中/拼中后可从列出的招取消出 → gatling 连段。
+                    // FeintFrom（前摇通道）：可在列出招式的【前摇】期间无需命中直接切出 → 变招/试探招。
+                    // 这里让 LP↔LK 互为两条通道的来源：
+                    //   打中了 → 取消续招（连招）；还没打出去 → 变招改主意（虚实）。
                     // 注：目前是交替无限 chain，Phase 1 会加"每招在一段连里只能用一次"的上限。
+                    // 轻攻击取消网的统一规则：【拳从脚接，脚从拳接，站蹲随意换】。
+                    // CancelFrom（命中后连招）与 FeintFrom（前摇变招）都按这条规则配——
+                    // 好记，且站蹲切换自然融入连段（5LP 命中 → 按住下+LK 直接接 2LK）。
                     new MoveEntry { Buttons = ButtonMask.LP, Stance = Stance.Standing, MoveId = "Frank_FS4_Attack_Punch_L_02", Priority = 10,
-                        CancelFrom = new[] { "Frank_FS4_Attack_Kick_L_02" } },
+                        CancelFrom = new[] { "Frank_FS4_Attack_Kick_L_02", "Frank_FS4_Attack_Crouch_Kick_01" },
+                        FeintFrom  = new[] { "Frank_FS4_Attack_Kick_L_02", "Frank_FS4_Attack_Crouch_Kick_01" } },
                     new MoveEntry { Buttons = ButtonMask.LK, Stance = Stance.Standing, MoveId = "Frank_FS4_Attack_Kick_L_02", Priority = 10,
-                        CancelFrom = new[] { "Frank_FS4_Attack_Punch_L_02" } },
+                        CancelFrom = new[] { "Frank_FS4_Attack_Punch_L_02", "Frank_FS4_Attack_Crouch_Punch_01" },
+                        FeintFrom  = new[] { "Frank_FS4_Attack_Punch_L_02", "Frank_FS4_Attack_Crouch_Punch_01" } },
                     // 轻拳目标连：LP 连点 Punch_02→03→04→05。每段从【前一记拳】取消出（同键目标连的关键）。
                     // CancelOnly=true 使 03/04/05 只在连里存在、中立态点 LP 永远是起手的 Punch_02。
                     new MoveEntry { Buttons = ButtonMask.LP, Stance = Stance.Standing, MoveId = "Frank_FS4_Attack_Punch_L_03", Priority = 20,
@@ -120,6 +127,16 @@ namespace Domain.Infrastructure.Battle
                         CancelFrom = new[] { "Frank_FS4_Attack_Punch_L_03" }, CancelOnly = true},
                     new MoveEntry { Buttons = ButtonMask.LP, Stance = Stance.Standing, MoveId = "Frank_FS4_Attack_Punch_L_05", Priority = 20,
                         CancelFrom = new[] { "Frank_FS4_Attack_Punch_L_04" }, CancelOnly = true},
+
+                    // --- 蹲姿技（2LP / 2LK）---
+                    // 姿态由方向键决定（1/2/3=蹲），同一按键在蹲姿解析到这两条。
+                    // 取消/变招同样走"拳从脚接，脚从拳接"：站蹲四个轻攻击织成一张互通的网。
+                    new MoveEntry { Buttons = anyPunch, Stance = Stance.Crouching, MoveId = "Frank_FS4_Attack_Crouch_Punch_01", Priority = 10,
+                        CancelFrom = new[] { "Frank_FS4_Attack_Kick_L_02", "Frank_FS4_Attack_Crouch_Kick_01" },
+                        FeintFrom  = new[] { "Frank_FS4_Attack_Kick_L_02", "Frank_FS4_Attack_Crouch_Kick_01" } },
+                    new MoveEntry { Buttons = anyKick, Stance = Stance.Crouching, MoveId = "Frank_FS4_Attack_Crouch_Kick_01", Priority = 10,
+                        CancelFrom = new[] { "Frank_FS4_Attack_Punch_L_02", "Frank_FS4_Attack_Crouch_Punch_01" },
+                        FeintFrom  = new[] { "Frank_FS4_Attack_Punch_L_02", "Frank_FS4_Attack_Crouch_Punch_01" } },
                 },
  
                 Moves = new[]
@@ -130,7 +147,7 @@ namespace Domain.Infrastructure.Battle
                         MoveId = "Frank_FS4_Attack_Punch_L_02",
                         Startup = 5, Active = 3, Recovery = 10, 
                         Attributes = AttackAttribute.Strike | AttackAttribute.Mid,
-                        Damage = 30, HitstunFrames = 50, BlockstunFrames = 8,
+                        Damage = 30, HitstunFrames = 50,
                         CancelFrom = 0,
                         Reaction = HitReaction.StandLight, 
                     },
@@ -139,7 +156,7 @@ namespace Domain.Infrastructure.Battle
                         MoveId = "Frank_FS4_Attack_Punch_L_03",
                         Startup = 5, Active = 3, Recovery = 10, 
                         Attributes = AttackAttribute.Strike | AttackAttribute.Mid,
-                        Damage = 30, HitstunFrames = 50, BlockstunFrames = 8,
+                        Damage = 30, HitstunFrames = 50,
                         CancelFrom = 5, 
                         Reaction = HitReaction.StandLight, 
                     },
@@ -148,7 +165,7 @@ namespace Domain.Infrastructure.Battle
                         MoveId = "Frank_FS4_Attack_Punch_L_04",
                         Startup = 5, Active = 3, Recovery = 10, 
                         Attributes = AttackAttribute.Strike | AttackAttribute.Mid,
-                        Damage = 30, HitstunFrames = 50, BlockstunFrames = 8,
+                        Damage = 30, HitstunFrames = 50,
                         CancelFrom = 5, 
                         Reaction = HitReaction.StandLight, 
                     },
@@ -157,7 +174,7 @@ namespace Domain.Infrastructure.Battle
                         MoveId = "Frank_FS4_Attack_Punch_L_05",
                         Startup = 5, Active = 3, Recovery = 10,
                         Attributes = AttackAttribute.Strike | AttackAttribute.Mid,
-                        Damage = 50, HitstunFrames = 50, BlockstunFrames = 8,
+                        Damage = 50, HitstunFrames = 50,
                         CancelFrom = 5, 
                         Reaction = HitReaction.StandLight, 
                     },
@@ -167,14 +184,65 @@ namespace Domain.Infrastructure.Battle
                         MoveId = "Frank_FS4_Attack_Kick_L_02",
                         Startup = 6, Active = 3, Recovery = 12, // 现实轻脚帧数（原 16/4/34 太长太僵）
                         Attributes = AttackAttribute.Strike | AttackAttribute.Mid,
-                        Damage = 30, HitstunFrames = 25, BlockstunFrames = 8,
+                        Damage = 30, HitstunFrames = 25,
                         CancelFrom = 5, // 命中后从判定帧起可取消 → 连招
                         Reaction = HitReaction.StandMedium, // 轻脚 → 中受击（蹲姿命中降为 CrouchHeavy）
+                    },
+
+                    // ===== 蹲姿轻攻击。帧数先对标站立轻攻击，按 clip 实际长度和手感再调 =====
+                    // ⚠ 出招前必须用 FG/Hitbox Editor 画 Hit/Hurt 框存进 boxes.json——
+                    // 没有 Hit 框这两招【打不中】（判定层直接跳过）；位移用 Root Motion Baker 烘。
+                    new MoveData
+                    {
+                        MoveId = "Frank_FS4_Attack_Crouch_Punch_01",
+                        Startup = 5, Active = 3, Recovery = 10,
+                        Attributes = AttackAttribute.Strike | AttackAttribute.Mid,
+                        Damage = 30, HitstunFrames = 50,
+                        CancelFrom = 5,
+                        Reaction = HitReaction.CrouchLight, // 挨打方按自身姿态自动降档（蹲→CrouchLight）
+                    },
+                    new MoveData
+                    {
+                        MoveId = "Frank_FS4_Attack_Crouch_Kick_01",
+                        Startup = 6, Active = 3, Recovery = 12,
+                        // Low = 下段语义。防御已移除，但该属性保留：将来立回/AI/受击分档都会用它
+                        Attributes = AttackAttribute.Strike | AttackAttribute.Low,
+                        Damage = 30, HitstunFrames = 25,
+                        CancelFrom = 5,
+                        Reaction = HitReaction.CrouchLight,
                     },
                     new MoveData
                     {
                         MoveId = "Frank_FS4_Idle_Stand_Loop",
                         Startup = 0, Active = 60, Recovery = 0, // 全程可行动；总帧数 = 待机 clip 帧数
+                        Attributes = AttackAttribute.None,
+                    },
+
+                    // 蹲姿待机：循环、零位移。下蹲的机制价值全在【判定框】——
+                    // 用 FG/Hitbox Editor 给它画一套比站立【矮】的 Hurt/Push 框存进 boxes.json，
+                    // "蹲下躲上段"才真正成立（画之前回退站立 Idle 的框 = 蹲了不变矮，只是姿态判定变了）。
+                    // Animator 缺同名 State 时表现层回退站立待机并告警，逻辑不受影响。
+                    new MoveData
+                    {
+                        MoveId = "Frank_FS4_Idle_Crouch_Loop",
+                        Startup = 0, Active = 60, Recovery = 0, // 占位帧数，须 = 蹲姿 clip 帧数
+                        Attributes = AttackAttribute.None,
+                    },
+
+                    // 下蹲/起身过渡（三段式：Crouching → Idle_Crouch_Loop → Standing）。
+                    // 一次性动画，零位移，全程可出招（过渡纯视觉）。中途改主意会在两段过渡间
+                    // 按【对称进度】接续（MovementController.MirrorProgress），所以两段的
+                    // TotalFrames 都必须 = 各自 clip 的真实帧数，否则接续点会错位。
+                    new MoveData
+                    {
+                        MoveId = "Frank_FS4_Crouching", // 站→蹲
+                        Startup = 0, Active = 10, Recovery = 0, // 占位帧数，须 = clip 帧数
+                        Attributes = AttackAttribute.None,
+                    },
+                    new MoveData
+                    {
+                        MoveId = "Frank_FS4_Standing", // 蹲→站
+                        Startup = 0, Active = 10, Recovery = 0, // 占位帧数，须 = clip 帧数
                         Attributes = AttackAttribute.None,
                     },
                      new MoveData
@@ -261,8 +329,8 @@ namespace Domain.Infrastructure.Battle
                     { HitReaction.StandLight,  "Frank_FS4_Hit_High_Front" },
                     { HitReaction.StandMedium, "Frank_FS4_Hit_Mid_Front" },
                     { HitReaction.StandHeavy,  "Frank_FS4_Hit_High_Front" },
-                    { HitReaction.CrouchLight, "Frank_FS4_Hit_High_Front" },
-                    { HitReaction.CrouchHeavy, "Frank_FS4_Hit_High_Front" },
+                    { HitReaction.CrouchLight, "Frank_FS4_Defence_Mid_Crouch_F" },
+                    { HitReaction.CrouchHeavy, "Frank_FS4_Defence_Mid_Crouch_F" },
                     { HitReaction.AirHit,      "Frank_FS4_Hit_High_Front" },
                 },
             };

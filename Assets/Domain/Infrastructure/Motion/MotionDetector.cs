@@ -10,7 +10,10 @@ namespace Domain.Infrastructure.Motion
         public void Add(MotionPattern pattern)
         {
             patterns.Add(pattern);
-            patterns.Sort((a,b) => a.Priority.CompareTo(b.Priority));
+            // 降序：高优先级先匹配。DetectAll 靠 consumedButtons 做歧义裁决——
+            // 谁先匹配谁消费触发键，所以排序方向就是"升龙(110) > 波动(100)"规则本身。
+            // （升序曾是 bug：6236+P 会被波动抢先消费，升龙永远出不来。）
+            patterns.Sort((a,b) => b.Priority.CompareTo(a.Priority));
         }
         
         public void Clear() => patterns.Clear();

@@ -101,8 +101,7 @@ namespace Domain.Infrastructure.Battle
  
         public AttackAttribute Attributes;
         public int Damage;
-        public int HitstunFrames;   // 命中对方的硬直
-        public int BlockstunFrames; // 被防时对方的防御硬直
+        public int HitstunFrames;   // 命中对方的硬直（本作无防御，没有对应的防御硬直字段）
         public int Hitstop;         // 命中顿帧覆盖（0 = 用 CollisionResolver 的结果默认；重招可调大）
 
         /// <summary>

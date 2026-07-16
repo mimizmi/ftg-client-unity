@@ -15,6 +15,14 @@ namespace Domain.Infrastructure
         public FTGActions.P1Actions P1Actions { get; private set; }
         public FTGActions.P2Actions P2Actions { get; private set; }
         private ButtonMask prevHeld;
+
+        // ---- 事件级按键锁存：修"快速轻点被 60Hz 轮询漏掉" ----
+        // IsPressed() 只回答"这一瞬按着吗"：两次逻辑采样(16.7ms)之间完成的按下→抬起
+        // 会被彻底丢掉，体感就是"必须按重(=按久)才有反应"。
+        // InputSystem 的 performed 回调在按下瞬间触发（与帧率无关），这里锁存
+        // "自上个逻辑帧以来按下过的键"，采样时并入 Pressed 并清空——短按永不丢失。
+        // 方向仍按 60Hz 采样（方向是持续状态，丢失窗口极小；且事件重放会破坏确定性简单性）。
+        private ButtonMask latchedPresses;
         public int CurrentFrame { get; private set; }
         public InputBuffer Buffer { get; } = new InputBuffer(120);
         
@@ -46,6 +54,7 @@ namespace Domain.Infrastructure
             
             CurrentFrame = 0;
             prevHeld = ButtonMask.None;
+            latchedPresses = ButtonMask.None;
         }
 
         public void Shutdown()
@@ -83,7 +92,10 @@ namespace Domain.Infrastructure
             if (seat == 0 ? P1Actions.MK.IsPressed() : P2Actions.MK.IsPressed()) held |= ButtonMask.MK;
             if (seat == 0 ? P1Actions.HK.IsPressed() : P2Actions.HK.IsPressed()) held |= ButtonMask.HK;
 
-            ButtonMask pressed = held & ~prevHeld;
+            // 轮询边沿 ∪ 事件锁存：正常按住的键两边都会命中（同帧合并，不重复）；
+            // 采样间隙内"按下即松开"的短按只有锁存能抓到（此时 Held 为 false 是正确语义）。
+            ButtonMask pressed = (held & ~prevHeld) | latchedPresses;
+            latchedPresses = ButtonMask.None;
             ButtonMask released = prevHeld & ~held;
             prevHeld = held;
             return new InputFrame
@@ -129,39 +141,32 @@ namespace Domain.Infrastructure
             LogicTick.Invoke(CurrentFrame, Buffer);
         }
 
-        public void OnLK(InputAction.CallbackContext context)
+        /// <summary>
+        /// 按下瞬间锁存。回调同时注册在 gameplay 图和本座位图上（Initialize），
+        /// 必须按座位过滤——否则 gameplay 图或另一座位的同名动作会串进来。
+        /// </summary>
+        private void LatchPress(InputAction.CallbackContext context, ButtonMask button)
         {
-            
+            if (!context.performed) return;
+            if (context.action.actionMap != (seat == 0 ? P1Actions.Get() : P2Actions.Get())) return;
+            latchedPresses |= button;
         }
 
-        public void OnHK(InputAction.CallbackContext context)
-        {
-            
-        }
+        public void OnLK(InputAction.CallbackContext context) => LatchPress(context, ButtonMask.LK);
 
-        public void OnMK(InputAction.CallbackContext context)
-        {
-            
-        }
+        public void OnHK(InputAction.CallbackContext context) => LatchPress(context, ButtonMask.HK);
 
-        public void OnLP(InputAction.CallbackContext context)
-        {
-            
-        }
+        public void OnMK(InputAction.CallbackContext context) => LatchPress(context, ButtonMask.MK);
 
-        public void OnHP(InputAction.CallbackContext context)
-        {
-            
-        }
+        public void OnLP(InputAction.CallbackContext context) => LatchPress(context, ButtonMask.LP);
 
-        public void OnMP(InputAction.CallbackContext context)
-        {
-            
-        }
+        public void OnHP(InputAction.CallbackContext context) => LatchPress(context, ButtonMask.HP);
+
+        public void OnMP(InputAction.CallbackContext context) => LatchPress(context, ButtonMask.MP);
 
         public void OnMove(InputAction.CallbackContext context)
         {
-            
+            // 方向不锁存：持续状态按 60Hz 采样已足够（见 latchedPresses 注释）
         }
     }
 }
