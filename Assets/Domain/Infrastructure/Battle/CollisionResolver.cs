@@ -23,6 +23,12 @@ namespace Domain.Infrastructure.Battle
         public MoveData Move;
         public DefenseOutcome Outcome;
 
+        /// <summary>
+        /// 接触点（世界系）：首个相交的 攻击框∩受击框（拼招则为双方攻击框）交集矩形中心。
+        /// 由判定当场算出——盒数据的确定性函数。表现层（火花/演出）按这里生成，别再估。
+        /// </summary>
+        public Vector2 ContactPoint;
+
         public override string ToString() =>
             $"[帧{Frame}] {Attacker.Name}:{Move.MoveId} → {Defender.Name} = {Outcome}";
     }
@@ -68,12 +74,13 @@ namespace Domain.Infrastructure.Battle
 
             // ⓪ 拼招：双方攻击框相遇 → 两招互相抵消 + 双方定格 + 双方取消窗同开。
             // 本帧不再裁定命中（拼招覆盖一切——即使同帧攻击框也扫到了对方身体）。
-            if (ClashEnabled && TestClash(p1, p2))
+            if (ClashEnabled && TestClash(p1, p2, out Vector2 clashPoint))
             {
                 var clash = new HitEvent
                 {
                     Frame = frame, Attacker = p1, Defender = p2,
                     Move = p1.CurrentMove, Outcome = DefenseOutcome.Clashed,
+                    ContactPoint = clashPoint,
                 };
                 results.Add(clash);
                 Apply(clash);
@@ -81,11 +88,11 @@ namespace Domain.Infrastructure.Battle
             }
 
             // 先对称检测再统一施加：同帧互中 = 相杀(trade)，两边都吃结果
-            bool p1HitsP2 = TestOverlap(p1, p2);
-            bool p2HitsP1 = TestOverlap(p2, p1);
+            bool p1HitsP2 = TestOverlap(p1, p2, out Vector2 p1Contact);
+            bool p2HitsP1 = TestOverlap(p2, p1, out Vector2 p2Contact);
 
-            if (p1HitsP2) results.Add(Judge(frame, p1, p2));
-            if (p2HitsP1) results.Add(Judge(frame, p2, p1));
+            if (p1HitsP2) results.Add(Judge(frame, p1, p2, p1Contact));
+            if (p2HitsP1) results.Add(Judge(frame, p2, p1, p2Contact));
 
             for (int i = 0; i < results.Count; i++)
                 Apply(results[i]);
@@ -99,8 +106,9 @@ namespace Domain.Infrastructure.Battle
         /// 只有打击技参与拼招——投是贴身抓取，没有"兵刃相接"的语义。
         /// 拼招事件的 Attacker/Defender 只是记名（p1/p2），双方地位完全对等。
         /// </summary>
-        private bool TestClash(FighterState a, FighterState b)
+        private bool TestClash(FighterState a, FighterState b, out Vector2 contact)
         {
+            contact = default;
             if (!a.CanMoveConnect || !b.CanMoveConnect) return false;
             if ((a.CurrentMove.Attributes & AttackAttribute.Strike) == 0) return false;
             if ((b.CurrentMove.Attributes & AttackAttribute.Strike) == 0) return false;
@@ -116,7 +124,11 @@ namespace Domain.Infrastructure.Battle
                 for (int j = 0; j < defendBoxes.Count; j++)
                 {
                     Rect rb = defendBoxes[j].ToWorld(b.Position, b.FacingRight);
-                    if (ra.Overlaps(rb)) return true;
+                    if (ra.Overlaps(rb))
+                    {
+                        contact = IntersectionCenter(ra, rb);
+                        return true;
+                    }
                 }
             }
             return false;
@@ -126,8 +138,9 @@ namespace Domain.Infrastructure.Battle
         /// 攻击框 vs 受击框。两者都来自 BoxTracks（可视化编辑、关键帧插值），
         /// 受击框随动画姿态变化——蹲下时框变矮，这是"上段打空、下段命中"的机制基础。
         /// </summary>
-        private bool TestOverlap(FighterState attacker, FighterState defender)
+        private bool TestOverlap(FighterState attacker, FighterState defender, out Vector2 contact)
         {
+            contact = default;
             if (!attacker.CanMoveConnect) return false;
             if (defender.IsInvulnerable) return false; // ① 无敌：升龙无敌帧穿招
 
@@ -143,18 +156,36 @@ namespace Domain.Infrastructure.Battle
                 for (int j = 0; j < defendBoxes.Count; j++)
                 {
                     Rect hurt = defendBoxes[j].ToWorld(defender.Position, defender.FacingRight);
-                    if (hit.Overlaps(hurt)) return true;
+                    if (hit.Overlaps(hurt))
+                    {
+                        contact = IntersectionCenter(hit, hurt);
+                        return true;
+                    }
                 }
             }
             return false;
         }
 
-        private HitEvent Judge(int frame, FighterState attacker, FighterState defender)
+        /// <summary>两矩形交集的中心。仅在已确认 Overlaps 后调用（交集必非空）。</summary>
+        private static Vector2 IntersectionCenter(Rect a, Rect b)
+        {
+            float xMin = Mathf.Max(a.xMin, b.xMin);
+            float xMax = Mathf.Min(a.xMax, b.xMax);
+            float yMin = Mathf.Max(a.yMin, b.yMin);
+            float yMax = Mathf.Min(a.yMax, b.yMax);
+            return new Vector2((xMin + xMax) * 0.5f, (yMin + yMax) * 0.5f);
+        }
+
+        private HitEvent Judge(int frame, FighterState attacker, FighterState defender, Vector2 contact)
         {
             MoveData move = attacker.CurrentMove;
             attacker.MarkMoveConnected();
 
-            var ev = new HitEvent { Frame = frame, Attacker = attacker, Defender = defender, Move = move };
+            var ev = new HitEvent
+            {
+                Frame = frame, Attacker = attacker, Defender = defender,
+                Move = move, ContactPoint = contact,
+            };
 
             // ② 当身：守方处于接触窗口，且来击类型在可接范围内（投通常接不住）
             if (defender.CounterCatchActive

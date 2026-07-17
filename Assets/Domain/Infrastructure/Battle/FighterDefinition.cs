@@ -53,7 +53,17 @@ namespace Domain.Infrastructure.Battle
         private readonly Dictionary<string, FighterDefinition> cache =
             new Dictionary<string, FighterDefinition>();
  
-        private readonly BoxDataLoader loader = new BoxDataLoader();
+        private readonly BoxDataLoader loader;
+
+        /// <summary>
+        /// readText：帧数据 JSON 的文本来源（key 如 "BoxData/Frank_boxes"，取不到返回 null）。
+        /// 运行时传 Addressables 读取器（帧数据可热更），测试传 File.ReadAllText——
+        /// 数据管道被注入，本仓库与 Core 均不再依赖 Resources。
+        /// </summary>
+        public ExampleFighterDefinitionRepository(Func<string, string> readText)
+        {
+            loader = new BoxDataLoader(readText);
+        }
         
         public FighterDefinition Get(string characterId)
         {

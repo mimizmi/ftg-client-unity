@@ -29,6 +29,9 @@ namespace Domain.Infrastructure.Battle
  
         private BattleLoop loop;
         private FighterState fighter;
+
+        /// <summary>当前绑定的逻辑侧角色（FX 层按它做 状态 → 视图 的映射）。未绑定时为 null。</summary>
+        public FighterState Fighter => fighter;
  
         /// <summary>
         /// 由 BattleBootstrap 在实例化角色后调用，接上逻辑侧。

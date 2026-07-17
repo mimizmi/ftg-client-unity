@@ -1,3 +1,5 @@
+using Domain.Infrastructure.Motion;
+
 namespace Domain.Infrastructure.Input
 {
     /// <summary>
@@ -13,6 +15,9 @@ namespace Domain.Infrastructure.Input
 
         /// <summary>搓招检测产物队列（带缓冲期）。模拟消费。</summary>
         CommandQueue Commands { get; }
+
+        /// <summary>本座位的搓招检测器（装配期由组合根注入角色的指令表）。</summary>
+        MotionDetector Detector { get; }
 
         /// <summary>朝向（影响搓招镜像与方向语义），由战斗循环每帧回写。</summary>
         bool FacingRight { get; set; }

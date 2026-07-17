@@ -394,6 +394,28 @@ namespace Domain.Infrastructure.Battle
             Status = FighterStatus.Neutral;
         }
 
+        /// <summary>
+        /// 回合级重置：新回合开局归位满血，一切回合内状态清零。
+        /// 只应由回合系统（BattleSimulation）调用。
+        /// 注意 simFrame【不】重置——它只用于给预输入计龄，跨回合单调递增无害，
+        /// 而清零反而会让"计龄基准倒退"产生幽灵缓冲。
+        /// </summary>
+        public void ResetForRound(Vector2 spawnPosition, int health)
+        {
+            Position = spawnPosition;
+            Health = health;
+            EndMove();
+            CurrentReaction = HitReaction.None;
+            reactionMove = null;
+            stunRemaining = 0;
+            stunTotal = 0;
+            hitstop = 0;
+            bufferedPress = ButtonMask.None;
+            bufferedPressFrame = 0;
+            input.Commands.Clear(); // 上回合搓到一半的指令不许穿越回合
+            Movement.HardReset();
+        }
+
         // 注：本作【没有防御机制】——原 GuardCheck（按住后方向格挡）已整体移除。
         // 防御的位置由"拼招"取代：双方攻击框相遇即互相抵消（见 CollisionResolver.TestClash）。
         // 按住后方向就只是走位后撤，空间即防御。

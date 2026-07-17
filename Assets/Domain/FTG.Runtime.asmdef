@@ -5,7 +5,9 @@
         "FTG.Core",
         "Unity.InputSystem",
         "Loxodon.Framework",
-        "Loxodon.Log"
+        "Loxodon.Log",
+        "Unity.Addressables",
+        "Unity.ResourceManager"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

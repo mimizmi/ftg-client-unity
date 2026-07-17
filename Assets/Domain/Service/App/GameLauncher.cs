@@ -20,7 +20,8 @@ namespace Domain.Service.App
             IServiceContainer container = context.GetContainer();
             BindingServiceBundle bindingBundle = new BindingServiceBundle(container);
             bindingBundle.Start();
-            fighterDefinitionRepository = new ExampleFighterDefinitionRepository();
+            // 帧数据 JSON 经 Addressables 读取（可热更）；仓库懒加载，首次 Get 时目录已被 HotUpdater 刷新
+            fighterDefinitionRepository = new ExampleFighterDefinitionRepository(AddressablesTextReader.Read);
             messenger = new Messenger();
             container.Register<IFighterDefinitionRepository>(fighterDefinitionRepository);
             container.Register<Messenger>(messenger);

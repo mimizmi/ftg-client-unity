@@ -67,7 +67,7 @@ namespace FTG.Tests
 
         private static RunResult Run()
         {
-            var repo = new ExampleFighterDefinitionRepository();
+            ExampleFighterDefinitionRepository repo = TestBattleFactory.CreateRepository();
             FighterDefinition def = repo.Get("Frank");
 
             FighterState p1 = BuildFighter("P1", -1f, new ScriptedSeat(P1Script), def);

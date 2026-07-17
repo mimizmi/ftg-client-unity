@@ -30,6 +30,16 @@ namespace Domain.Infrastructure.Battle
     /// </summary>
     public sealed class BoxDataLoader
     {
+        // 数据 key（如 "BoxData/Frank_boxes"）→ JSON 文本；取不到返回 null。
+        // 文本来源是注入的而非内置：运行时给 Addressables 读取器（帧数据可热更），
+        // 测试给 File.ReadAllText——Core 不依赖任何资源系统（服务器侧可换读文件的同构实现）。
+        private readonly System.Func<string, string> readText;
+
+        public BoxDataLoader(System.Func<string, string> readText)
+        {
+            this.readText = readText;
+        }
+
         private readonly Dictionary<string, CharacterBoxData> boxCache =
             new Dictionary<string, CharacterBoxData>();
  
@@ -97,19 +107,19 @@ namespace Domain.Infrastructure.Battle
             if (boxCache.TryGetValue(characterId, out CharacterBoxData cached))
                 return cached;
  
-            var asset = Resources.Load<TextAsset>($"BoxData/{characterId}_boxes");
+            string json = readText?.Invoke($"BoxData/{characterId}_boxes");
             CharacterBoxData data;
- 
-            if (asset == null)
+
+            if (json == null)
             {
                 Debug.LogWarning(
-                    $"[BoxDataLoader] 缺少 Resources/BoxData/{characterId}_boxes.json。" +
-                    "请用 FG/Hitbox Editor 编辑并保存。角色将没有判定框（打不中也挨不着）。");
+                    $"[BoxDataLoader] 取不到 BoxData/{characterId}_boxes.json（未标记 Addressable 或文件缺失）。" +
+                    "请用 FG/Hitbox Editor 编辑保存。角色将没有判定框（打不中也挨不着）。");
                 data = new CharacterBoxData { CharacterId = characterId };
             }
             else
             {
-                data = JsonUtility.FromJson<CharacterBoxData>(asset.text)
+                data = JsonUtility.FromJson<CharacterBoxData>(json)
                        ?? new CharacterBoxData { CharacterId = characterId };
             }
  
@@ -122,20 +132,20 @@ namespace Domain.Infrastructure.Battle
             if (motionCache.TryGetValue(characterId, out CharacterRootMotion cached))
                 return cached;
  
-            var asset = Resources.Load<TextAsset>($"BoxData/{characterId}_rootmotion");
+            string json = readText?.Invoke($"BoxData/{characterId}_rootmotion");
             CharacterRootMotion data;
- 
-            if (asset == null)
+
+            if (json == null)
             {
                 Debug.LogWarning(
-                    $"[BoxDataLoader] 缺少 Resources/BoxData/{characterId}_rootmotion.json。" +
+                    $"[BoxDataLoader] 取不到 BoxData/{characterId}_rootmotion.json（未标记 Addressable 或文件缺失）。" +
                     "请用 FG/Batch Root Motion Baker 烘焙。" +
                     "角色将【无法移动】——走路/冲刺/跳跃的位移全部来自这份数据。");
                 data = new CharacterRootMotion { CharacterId = characterId };
             }
             else
             {
-                data = JsonUtility.FromJson<CharacterRootMotion>(asset.text)
+                data = JsonUtility.FromJson<CharacterRootMotion>(json)
                        ?? new CharacterRootMotion { CharacterId = characterId };
             }
  

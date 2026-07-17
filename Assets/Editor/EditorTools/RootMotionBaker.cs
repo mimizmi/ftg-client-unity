@@ -29,7 +29,7 @@ namespace Editor.EditorTools
     {
         public enum ForwardAxis { Z, X }
  
-        private const string LibraryFolder = "Assets/Resources/BoxData";
+        private const string LibraryFolder = "Assets/BoxData"; // M3 起随 Addressables 迁出 Resources
         private const int SampleRate = 60;
  
         private string characterId = "Frank";

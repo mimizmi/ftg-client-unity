@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bbb281ee3bf0b054c82ac2347e9e782c, type: 3}
+  m_Name: BoxData
+  m_EditorClassIdentifier: 
+  m_GroupName: BoxData
+  m_Data:
+    m_SerializedData: []
+  m_GUID: 88929633e574c2445b586dd428e46542
+  m_SerializeEntries:
+  - m_GUID: 3f637a89b46a1034d94dec6eb554f89b
+    m_Address: BoxData/Frank_boxes
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - preload
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 705fae7a33d191a4a8f8aaadf86da8e6
+    m_Address: BoxData/Frank_rootmotion
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - preload
+    FlaggedDuringContentUpdateRestriction: 0
+  m_ReadOnly: 0
+  m_Settings: {fileID: 11400000, guid: 3ecbe8838a95204488eb98e857da65eb, type: 2}
+  m_SchemaSet:
+    m_Schemas:
+    - {fileID: 11400000, guid: 32493b6686323fb44bda73c2a50e9ebe, type: 2}
+    - {fileID: 11400000, guid: 5f8e79a6e1235a84cb944f54a202b058, type: 2}

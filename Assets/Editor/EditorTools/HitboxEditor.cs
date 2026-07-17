@@ -36,7 +36,7 @@ namespace Editor.EditorTools
     public sealed class HitboxEditor : EditorWindow
     {
         // ---- 数据文件 ----
-        private const string LibraryFolder = "Assets/Resources/BoxData";
+        private const string LibraryFolder = "Assets/BoxData"; // M3 起随 Addressables 迁出 Resources
         private string BoxPath => $"{LibraryFolder}/{characterId}_boxes.json";
         private string RootMotionPath => $"{LibraryFolder}/{characterId}_rootmotion.json";
  

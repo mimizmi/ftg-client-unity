@@ -567,5 +567,20 @@ namespace Domain.Infrastructure.Battle
             // 注意：不清 wasUpLastFrame。清成 false 的话，玩家手还按着上时，
             // 恢复可行动的当帧会被判为"刚按下" → 意外起跳。必须松手重按才能跳。
         }
+
+        /// <summary>
+        /// 回合级全清（与 Reset 语义相反）：新回合开局一切归零——蹲姿记忆、
+        /// 跳跃边沿、镜像锁、空中冲刺计数全部重置。只应由回合系统
+        /// （FighterState.ResetForRound）调用；战斗内打断请用 Reset()。
+        /// </summary>
+        public void HardReset()
+        {
+            airDash = null;
+            airDashFrame = 0;
+            airDashesUsed = 0;
+            motionMirrored = false;
+            wasUpLastFrame = false;
+            Stop();
+        }
     }
 }

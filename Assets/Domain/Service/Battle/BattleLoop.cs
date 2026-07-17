@@ -16,6 +16,9 @@ namespace Domain.Service.Battle
         private const float TickDelta = 1f / TickRate;
         private const float MaxAccumulated = 0.25f;
 
+        /// <summary>回合规则（Inspector 可调）。IntroFrames=60 给 Ready/Fight 演出留白。</summary>
+        [SerializeField] private BattleConfig config = new BattleConfig { IntroFrames = 60 };
+
         public BattleSimulation Simulation { get; private set; }
 
         public FighterState P1 => Simulation?.P1;
@@ -51,9 +54,11 @@ namespace Domain.Service.Battle
         /// CollisionResolver 与 Messenger 来自战斗上下文，战斗结束随上下文一起释放。
         /// </summary>
         public void Initialize(FighterState p1, FighterState p2,
-            CollisionResolver resolver, Messenger battleMessenger)
+            CollisionResolver resolver, Messenger battleMessenger,
+            BattleConfig configOverride = null)
         {
-            Simulation = new BattleSimulation(p1, p2, resolver);
+            // configOverride：回放必须用【录制时】的回合规则，否则时间线对不上
+            Simulation = new BattleSimulation(p1, p2, resolver, configOverride ?? config);
             messenger = battleMessenger;
 
             Simulation.HitOccurred += ev => messenger?.Publish(ev);
@@ -63,6 +68,13 @@ namespace Domain.Service.Battle
             p2.InputController.SelfDriven = false;
         }
 
+        /// <summary>停战（由 BattleBootstrap.StopBattle 调用）。Update 对 null 有守卫，安全。</summary>
+        public void Shutdown()
+        {
+            Simulation = null;
+            accumulator = 0f;
+        }
+
         private void Update()
         {
             if (Simulation == null) return;
@@ -70,7 +82,9 @@ namespace Domain.Service.Battle
             accumulator += Time.deltaTime;
             if (accumulator > MaxAccumulated) accumulator = MaxAccumulated;
 
-            while (accumulator >= TickDelta)
+            // Simulation 判空写进循环条件：TickFinished 订阅者（如回放收场）可能
+            // 在 Tick 内部调 StopBattle → Shutdown 置空，本帧不得再推
+            while (Simulation != null && accumulator >= TickDelta)
             {
                 accumulator -= TickDelta;
                 Simulation.Tick();

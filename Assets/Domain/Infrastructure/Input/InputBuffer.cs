@@ -14,7 +14,9 @@
         public int Capacity => frames.Length;
         public int Count => count;
         
-        public InputFrame Latest => frames[head];
+        // 空缓冲返回 default（防御：正常时序下每次读取前必有当帧 Push；
+        // 清空只发生在开战装配期，此后第一个逻辑帧就会推入新帧）
+        public InputFrame Latest => head < 0 ? default : frames[head];
 
         public void Push(in InputFrame frame)
         {
