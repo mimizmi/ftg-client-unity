@@ -9,6 +9,17 @@ namespace Domain.Infrastructure.Battle
     public class FighterView : MonoBehaviour
     {
         [SerializeField] private Animator animator;
+
+        [Header("动画驱动（M4：Playables 直驱）")]
+        [Tooltip("开 = PlayableGraph 直驱 clip（契约：Clip 名 = MoveId，状态机退化为 clip 清单）；" +
+                 "关 = 旧 Animator 状态机路径（State 名 = MoveId）。出问题可随时关掉回退")]
+        [SerializeField] private bool usePlayables = true;
+        [Tooltip("MoveId → Clip 名 别名。占位动画借用他招 clip 时配置（如前跳暂借垂直跳 clip）；名字一致无需配置")]
+        [SerializeField] private ClipAlias[] clipAliases;
+
+        [System.Serializable]
+        public struct ClipAlias { public string MoveId; public string ClipName; }
+
         [SerializeField] private string idleState = "Frank_FS4_Idle_Stand_Loop";
         [SerializeField] private string hitstunState = "Frank_FS4_Hit_High_Front";
         [SerializeField] private string blockstunState = "Frank_FS4_Hit_High_Front";
@@ -54,12 +65,32 @@ namespace Domain.Infrastructure.Battle
                 Debug.LogWarning($"[FighterView] {name} 的 Apply Root Motion 已被强制关闭：" +
                                  "位置权威属于 FighterState，动画只是显示器。", this);
             }
+
+            if (usePlayables && animator != null)
+            {
+                player?.Dispose();
+                player = new FighterAnimationPlayer(animator);
+
+                if (aliasMap == null)
+                {
+                    aliasMap = new Dictionary<string, string>();
+                    if (clipAliases != null)
+                        foreach (ClipAlias a in clipAliases)
+                            if (!string.IsNullOrEmpty(a.MoveId) && !string.IsNullOrEmpty(a.ClipName))
+                                aliasMap[a.MoveId] = a.ClipName;
+                }
+            }
         }
  
         private int lastSeenFrame = -1;
         private Vector2 prevPosition;    // 上一逻辑帧位置（插值起点）
         private Vector2 currentPosition; // 当前逻辑帧位置（插值终点）
-        private int playingStateHash;    // 当前播放的非招式状态，避免重复 CrossFade
+        private int playingStateHash;    // 当前播放的非招式状态，避免重复 CrossFade（旧路径用）
+
+        private FighterAnimationPlayer player; // Playables 路径的图（Bind 时创建）
+        private bool looseActive;              // 处于松散循环（待机）——图时间需要逐帧推进
+        private Dictionary<string, string> aliasMap;
+        private readonly HashSet<string> missingClipWarned = new HashSet<string>();
  
         private void LateUpdate()
         {
@@ -96,6 +127,11 @@ namespace Domain.Infrastructure.Battle
                 scale.x = Mathf.Abs(scale.x) * (fighter.FacingRight ? 1f : -1f);
                 transform.localScale = scale;
             }
+
+            // Playables 松散模式（待机循环/交叉淡入）按真实时间推进；
+            // 硬同步状态无需推进——姿势已在 SyncAnimation 里被 Evaluate(0) 钉住
+            if (usePlayables && looseActive && player != null)
+                player.Tick(Time.deltaTime);
         }
  
         private void SyncAnimation(FighterState fighter)
@@ -104,7 +140,9 @@ namespace Domain.Infrastructure.Battle
             // speed=0 是关键——否则 Animator 会按真实时间前飘、再被每帧 Play 拽回，
             // 在 normalized 不变的场合（顿帧；受击 clip 播完但 hitstun 未结束的定格）
             // 来回抖 = 闪烁。唯一需要自走的是 PlayLoose 的 CrossFade，那里再临时置回 1。
-            animator.speed = 0f;
+            // Playables 路径没有这个问题：Manual 模式下时间只听 Evaluate 的。
+            looseActive = false; // 各分支只有 PlayLoose 会置回 true
+            if (!usePlayables) animator.speed = 0f;
 
             switch (fighter.Status)
             {
@@ -116,7 +154,8 @@ namespace Domain.Infrastructure.Battle
                     // 时长和帧数据不一致，这行会自动拉伸对齐——帧数据永远是权威。
                     MoveData move = fighter.CurrentMove;
                     float normalized = Mathf.Clamp01(fighter.MoveFrame / (float)move.TotalFrames);
-                    animator.Play(GetMoveStateHash(move.MoveId), 0, normalized);
+                    if (usePlayables) SampleMoveClip(move.MoveId, normalized);
+                    else animator.Play(GetMoveStateHash(move.MoveId), 0, normalized);
                     playingStateHash = 0;
                     break;
                 }
@@ -129,7 +168,8 @@ namespace Domain.Infrastructure.Battle
                     if (!string.IsNullOrEmpty(reactionId) && fighter.ReactionTotalFrames > 0)
                     {
                         float n = Mathf.Clamp01(fighter.ReactionFrame / (float)fighter.ReactionTotalFrames);
-                        animator.Play(ResolveState(reactionId, hitstunState), 0, n);
+                        if (usePlayables) player.SampleAt(ResolveClipName(reactionId, hitstunState), n);
+                        else animator.Play(ResolveState(reactionId, hitstunState), 0, n);
                         playingStateHash = 0;
                     }
                     else
@@ -170,8 +210,8 @@ namespace Domain.Infrastructure.Battle
             string clipId = movement.MotionClipId;
             if (!string.IsNullOrEmpty(clipId))
             {
-                int hash = ResolveState(clipId, idleState);
-                animator.Play(hash, 0, movement.MotionNormalizedTime);
+                if (usePlayables) player.SampleAt(ResolveClipName(clipId, idleState), movement.MotionNormalizedTime);
+                else animator.Play(ResolveState(clipId, idleState), 0, movement.MotionNormalizedTime);
                 playingStateHash = 0;
                 return;
             }
@@ -187,17 +227,24 @@ namespace Domain.Infrastructure.Battle
         /// </summary>
         private void PlayStunSynced(string stateName, FighterState fighter)
         {
-            int hash = ResolveState(stateName, idleState);
             float t = fighter.StunTotalFrames > 0
                 ? Mathf.Clamp01(1f - fighter.StunRemaining / (float)fighter.StunTotalFrames)
                 : 0f;
-            animator.Play(hash, 0, t);
+            if (usePlayables) player.SampleAt(ResolveClipName(stateName, idleState), t);
+            else animator.Play(ResolveState(stateName, idleState), 0, t);
             playingStateHash = 0; // 硬同步：清空重入保护，与招式/移动一致
         }
 
         /// <summary>非招式状态：不需要帧精确，用 CrossFade 平滑过渡，且避免每帧重入。</summary>
         private void PlayLoose(string stateName)
         {
+            if (usePlayables)
+            {
+                looseActive = true; // LateUpdate 末尾逐帧 Tick 推进图时间（循环 + 交叉淡入）
+                player.PlayLooping(ResolveClipName(stateName, idleState));
+                return;
+            }
+
             animator.speed = 1f; // CrossFade 过渡/循环需要 Animator 自走时间（覆盖 SyncAnimation 顶部的 0）
             int hash = ResolveState(stateName, idleState);
             if (playingStateHash == hash) return;
@@ -251,5 +298,33 @@ namespace Domain.Infrastructure.Battle
             moveStateHashCache[moveId] = hash;
             return hash;
         }
+
+        // ---- Playables 路径的 clip 解析（与旧 State 解析同构：警告一次 + 回退）----
+
+        private string ResolveClipName(string clipName, string fallback)
+        {
+            if (aliasMap != null && aliasMap.TryGetValue(clipName, out string alias)) clipName = alias;
+            if (player.HasClip(clipName)) return clipName;
+            if (missingClipWarned.Add(clipName))
+                Debug.LogWarning($"[FighterView] 控制器里没有名为 \"{clipName}\" 的 Clip，回退 \"{fallback}\"。" +
+                                 "（Playables 契约：Clip 名 = MoveId；占位借用请在 Clip Aliases 里配映射）", this);
+            return fallback;
+        }
+
+        /// <summary>招式 clip 不回退——判定与画面脱节必须报错修数据（与旧路径同哲学）。</summary>
+        private void SampleMoveClip(string moveId, float normalized)
+        {
+            string clipName = aliasMap != null && aliasMap.TryGetValue(moveId, out string alias) ? alias : moveId;
+            if (player.HasClip(clipName))
+            {
+                player.SampleAt(clipName, normalized);
+                return;
+            }
+            if (missingClipWarned.Add(clipName))
+                Debug.LogError($"[FighterView] 控制器里缺少招式 Clip \"{clipName}\"（Clip 名 = MoveId 契约；" +
+                               "占位借用可在 Clip Aliases 配映射）。画面将定格在上一姿势。", this);
+        }
+
+        private void OnDestroy() => player?.Dispose();
     }
 }

@@ -104,13 +104,29 @@ namespace Domain.Infrastructure.Battle
  
         /// <summary>出招瞬间广播——对手侧"看到对方起手"的反应系统订阅这里，而不是去读按键。</summary>
         public event Action<FighterState, MoveData> MoveStarted;
- 
+
+        // ---- 0GC：指令队列的谓词只在构造时分配一次 ----
+        // TryAct 中立态每逻辑帧都要 TryPeek 探测队列，谓词若写成捕获 cancelSource/cmd 的
+        // lambda，每帧都产生 闭包+委托 两次堆分配（战斗循环唯一的每帧分配源）。
+        // 改为字段谓词 + "本次调用参数"过渡字段：单线程逻辑帧内写入即用，无跨帧状态。
+        private readonly Predicate<DetectedCommand> commandResolvable;
+        private readonly Predicate<DetectedCommand> matchesConsumeId;
+        private string pendingCancelSource;
+        private CancelKind pendingCancelKind;
+        private string pendingConsumeId;
+
         public FighterState(IInputSeat input, MoveTable moveTable, MovementConfig movementConfig)
         {
             this.input = input;
             this.moveTable = moveTable;
-            Movement = new MovementController(movementConfig, input, 
+            Movement = new MovementController(movementConfig, input,
                 id => moves.TryGetValue(id , out MoveData m) ? m : null);
+
+            // 只捕获 this（一次性分配）；可变参数经 pending* 字段传入
+            commandResolvable = c => this.moveTable.ResolveCommand(
+                c.Id, this.input.Buffer.Latest.Pressed, CurrentStance,
+                pendingCancelSource, pendingCancelKind, this) != null;
+            matchesConsumeId = c => c.Id == pendingConsumeId;
         }
         
         public MovementController Movement { get; }
@@ -305,14 +321,16 @@ namespace Domain.Infrastructure.Battle
 
         private void TryAct(string cancelSource, CancelKind cancelKind = CancelKind.None)
         {
-            // ① 搓招指令（队列带优先级与预输入窗口）→ 经招式表解析成具体招式
-            if (input.Commands.TryPeek(out DetectedCommand cmd,
-                    c => moveTable.ResolveCommand(
-                        c.Id, input.Buffer.Latest.Pressed, CurrentStance, cancelSource, cancelKind, this) != null))
+            // ① 搓招指令（队列带优先级与预输入窗口）→ 经招式表解析成具体招式。
+            // 谓词是构造期缓存的字段（0GC），参数经 pending* 字段传递
+            pendingCancelSource = cancelSource;
+            pendingCancelKind = cancelKind;
+            if (input.Commands.TryPeek(out DetectedCommand cmd, commandResolvable))
             {
                 string moveId = moveTable.ResolveCommand(
                     cmd.Id, input.Buffer.Latest.Pressed, CurrentStance, cancelSource, cancelKind, this);
-                input.Commands.TryConsume(out _, c => c.Id == cmd.Id); // 确认可出招后才消费
+                pendingConsumeId = cmd.Id;
+                input.Commands.TryConsume(out _, matchesConsumeId); // 确认可出招后才消费
                 StartMove(moveId);
                 return;
             }
