@@ -8,7 +8,11 @@
         "UnityEngine.UI",
         "Unity.TextMeshPro",
         "Unity.Addressables",
-        "Unity.ResourceManager"
+        "Unity.ResourceManager",
+        "XLua.Runtime",
+        "Unity.InputSystem",
+        "UniTask",
+        "UniTask.Addressables"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

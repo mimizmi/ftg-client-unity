@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using Domain.Infrastructure.Battle;
 using Domain.Infrastructure.Input;
 using Domain.Infrastructure.Motion;
@@ -64,55 +65,86 @@ namespace Domain.Service.Battle
 
         private void Awake()
         {
-            if (autoStart) StartBattle(p1CharacterId, p2CharacterId);
+            if (autoStart) StartBattle(p1CharacterId, p2CharacterId).Forget();
         }
 
         /// <summary>
-        /// 开一场战斗。异步：角色包加载完成后才装配，onFinished(true) 时 loop.Simulation 已就绪；
-        /// onFinished(false) = 加载失败（错误已打日志），战斗未开。已在打则先停（重赛语义）。
+        /// 开一场战斗。await 到装配完成：true = loop.Simulation 已就绪；
+        /// false = 加载失败（错误已打日志）或本次请求被顶掉/停掉。已在打则先停（重赛语义）。
         /// </summary>
-        public void StartBattle(string p1Id, string p2Id, Action<bool> onFinished = null)
+        public async UniTask<bool> StartBattle(string p1Id, string p2Id)
         {
             if (BattleRunning) StopBattle();
 
-            LoadCharacterPair(p1Id, p2Id, (p1Prefab, p2Prefab) =>
-            {
-                if (p1Prefab == null || p2Prefab == null)
-                {
-                    onFinished?.Invoke(false);
-                    return;
-                }
-                Assemble(p1Id, p2Id, p1Seat, p2Seat, p1Prefab, p2Prefab, configOverride: null);
-                onFinished?.Invoke(true);
-            });
+            int generation = ++startGeneration;
+            (GameObject p1Prefab, GameObject p2Prefab) =
+                await UniTask.WhenAll(LoadCharacter(p1Id, generation), LoadCharacter(p2Id, generation));
+
+            if (generation != startGeneration) return false; // 等待期间被顶掉/停掉：流程已被接管
+            if (p1Prefab == null || p2Prefab == null) return false;
+
+            Assemble(p1Id, p2Id, p1Seat, p2Seat, p1Prefab, p2Prefab, configOverride: null);
+            return true;
         }
+
+        /// <summary>
+        /// 训练模式：P2 换成 AI 假人座位（策略可运行期切换），规则改为永不结束 + 连段后回血。
+        /// </summary>
+        public async UniTask<bool> StartTraining(string p1Id, string p2Id, IDummyPolicy dummyPolicy)
+        {
+            if (BattleRunning) StopBattle();
+
+            int generation = ++startGeneration;
+            (GameObject p1Prefab, GameObject p2Prefab) =
+                await UniTask.WhenAll(LoadCharacter(p1Id, generation), LoadCharacter(p2Id, generation));
+
+            if (generation != startGeneration) return false;
+            if (p1Prefab == null || p2Prefab == null) return false;
+
+            var dummy = new AiSeat(dummyPolicy);
+            Assemble(p1Id, p2Id, p1Seat, dummy, p1Prefab, p2Prefab, TrainingRules.CreateConfig());
+            // 座位先于角色构造：装配完才能把"我/对手"接进 AI 视野
+            dummy.Attach(self: loop.Simulation.P2, opponent: loop.Simulation.P1);
+            TrainingDummy = dummy;
+            trainingRules = new TrainingRules(loop.Simulation);
+            return true;
+        }
+
+        /// <summary>训练中的假人座位（切换行为用）。非训练模式为 null。</summary>
+        public AiSeat TrainingDummy { get; private set; }
+
+        private TrainingRules trainingRules;
 
         /// <summary>
         /// 以回放数据开一场"比赛重演"：双方座位换成 ReplaySeat，回合规则用录制时的。
         /// 何时结束由调用方（GameFlowController）盯着帧数收场。
         /// </summary>
-        public void StartReplay(ReplayData replay, Action<bool> onFinished = null)
+        public async UniTask<bool> StartReplay(ReplayData replay)
         {
             if (BattleRunning) StopBattle();
 
-            LoadCharacterPair(replay.P1CharacterId, replay.P2CharacterId, (p1Prefab, p2Prefab) =>
-            {
-                if (p1Prefab == null || p2Prefab == null)
-                {
-                    onFinished?.Invoke(false);
-                    return;
-                }
-                Assemble(replay.P1CharacterId, replay.P2CharacterId,
-                    new ReplaySeat(replay, isP1: true), new ReplaySeat(replay, isP1: false),
-                    p1Prefab, p2Prefab, replay.Config);
-                onFinished?.Invoke(true);
-            });
+            int generation = ++startGeneration;
+            (GameObject p1Prefab, GameObject p2Prefab) = await UniTask.WhenAll(
+                LoadCharacter(replay.P1CharacterId, generation),
+                LoadCharacter(replay.P2CharacterId, generation));
+
+            if (generation != startGeneration) return false;
+            if (p1Prefab == null || p2Prefab == null) return false;
+
+            Assemble(replay.P1CharacterId, replay.P2CharacterId,
+                new ReplaySeat(replay, isP1: true), new ReplaySeat(replay, isP1: false),
+                p1Prefab, p2Prefab, replay.Config);
+            return true;
         }
 
         /// <summary>结束当前战斗并释放一切战斗域资源（含作废飞行中的加载请求）。可安全重复调用。</summary>
         public void StopBattle()
         {
             startGeneration++; // 令飞行中的角色加载过期自弃
+
+            trainingRules?.Dispose();
+            trainingRules = null;
+            TrainingDummy = null;
 
             if (BattleRunning)
             {
@@ -142,37 +174,28 @@ namespace Domain.Service.Battle
 
         // ---- 角色包加载 ----
 
-        private void LoadCharacterPair(string p1Id, string p2Id, Action<GameObject, GameObject> onLoaded)
-        {
-            int generation = ++startGeneration;
-            GameObject a = null, b = null;
-            int remaining = 2;
-            LoadCharacter(p1Id, generation, prefab => { a = prefab; if (--remaining == 0) onLoaded(a, b); });
-            LoadCharacter(p2Id, generation, prefab => { b = prefab; if (--remaining == 0) onLoaded(a, b); });
-        }
-
-        private void LoadCharacter(string characterId, int generation, Action<GameObject> onLoaded)
+        private async UniTask<GameObject> LoadCharacter(string characterId, int generation)
         {
             string address = string.Format(characterAddressFormat, characterId);
             AsyncOperationHandle<GameObject> handle = Addressables.LoadAssetAsync<GameObject>(address);
-            handle.Completed += h =>
-            {
-                if (generation != startGeneration)
-                {
-                    Addressables.Release(h); // 等待期间本场被停掉/顶掉：作废自还，不再回调
-                    return;
-                }
 
-                characterHandles.Add(h);
-                if (h.Status != AsyncOperationStatus.Succeeded)
-                {
-                    Debug.LogError($"[BattleBootstrap] 角色包加载失败：\"{address}\"" +
-                                   "（确认 prefab 已标记 Addressable 且 address 精确匹配，区分大小写）", this);
-                    onLoaded(null);
-                    return;
-                }
-                onLoaded(h.Result);
-            };
+            GameObject prefab = null;
+            try { prefab = await handle.ToUniTask(); }
+            catch (Exception) { /* 失败统一走下方 null 分支报错 */ }
+
+            if (generation != startGeneration)
+            {
+                Addressables.Release(handle); // 等待期间本场被停掉/顶掉：作废自还
+                return null;
+            }
+
+            characterHandles.Add(handle);
+            if (prefab == null)
+            {
+                Debug.LogError($"[BattleBootstrap] 角色包加载失败：\"{address}\"" +
+                               "（确认 prefab 已标记 Addressable 且 address 精确匹配，区分大小写）", this);
+            }
+            return prefab;
         }
 
         // ---- 战斗装配（角色包就绪后同步完成） ----

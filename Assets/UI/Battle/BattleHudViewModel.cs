@@ -26,6 +26,12 @@ namespace Domain.UI.Battle
         private int announceFramesLeft;
         private BattlePhase lastPhase;
 
+        // 0GC：字符串只在数值真正变化时才格式化。ObservableObject.Set 的去重只能拦
+        // 截【通知】，拦不住 ToString/$"" 的【分配】——不加这层，每逻辑帧白扔 3~5 个字符串
+        private int lastSeconds = int.MinValue;
+        private int lastP1Wins = int.MinValue, lastP2Wins = int.MinValue;
+        private int lastP1Combo = int.MinValue, lastP2Combo = int.MinValue;
+
         public float P1HealthRatio { get => p1HealthRatio; private set => Set(ref p1HealthRatio, value); }
         public float P2HealthRatio { get => p2HealthRatio; private set => Set(ref p2HealthRatio, value); }
         public string TimerText { get => timerText; private set => Set(ref timerText, value); }
@@ -97,14 +103,18 @@ namespace Domain.UI.Battle
             int maxHealth = sim.Config.MaxHealth;
             P1HealthRatio = Mathf.Clamp01((float)sim.P1.Health / maxHealth);
             P2HealthRatio = Mathf.Clamp01((float)sim.P2.Health / maxHealth);
-            TimerText = sim.RoundSecondsRemaining.ToString();
-            P1WinsText = sim.P1Wins.ToString();
-            P2WinsText = sim.P2Wins.ToString();
+
+            int seconds = sim.RoundSecondsRemaining;
+            if (seconds != lastSeconds) { lastSeconds = seconds; TimerText = seconds.ToString(); }
+            if (sim.P1Wins != lastP1Wins) { lastP1Wins = sim.P1Wins; P1WinsText = lastP1Wins.ToString(); }
+            if (sim.P2Wins != lastP2Wins) { lastP2Wins = sim.P2Wins; P2WinsText = lastP2Wins.ToString(); }
 
             P1ComboVisible = sim.P1ComboHits >= 2;
             P2ComboVisible = sim.P2ComboHits >= 2;
-            if (P1ComboVisible) P1ComboText = $"{sim.P1ComboHits} HITS";
-            if (P2ComboVisible) P2ComboText = $"{sim.P2ComboHits} HITS";
+            if (P1ComboVisible && sim.P1ComboHits != lastP1Combo)
+            { lastP1Combo = sim.P1ComboHits; P1ComboText = $"{lastP1Combo} HITS"; }
+            if (P2ComboVisible && sim.P2ComboHits != lastP2Combo)
+            { lastP2Combo = sim.P2ComboHits; P2ComboText = $"{lastP2Combo} HITS"; }
         }
     }
 }

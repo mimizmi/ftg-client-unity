@@ -17,6 +17,12 @@ MonoBehaviour:
     m_SerializedData: []
   m_GUID: b4058952146628c4084b968485ba2540
   m_SerializeEntries:
+  - m_GUID: 30c27d54b2e4b824a8e87fde207e19f4
+    m_Address: UI/Notice
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - preload
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 4335939d91f870d4e8df06e05496dd40
     m_Address: UI/Loading
     m_ReadOnly: 0

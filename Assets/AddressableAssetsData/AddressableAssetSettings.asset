@@ -44,6 +44,7 @@ MonoBehaviour:
   m_BuildAddressablesWithPlayerBuild: 0
   m_overridePlayerVersion: '[UnityEditor.PlayerSettings.bundleVersion]'
   m_GroupAssets:
+  - {fileID: 11400000, guid: ebdba5451871c4b46acf3abc4093701d, type: 2}
   - {fileID: 11400000, guid: 8bddeea31b4e8f548a06ebe578aba091, type: 2}
   - {fileID: 11400000, guid: 51f64d8284c3bb04191680c8e0ed32b1, type: 2}
   - {fileID: 11400000, guid: 0b60aed826c4d9a45a1e61cbdd1a0e8f, type: 2}
@@ -120,7 +121,7 @@ MonoBehaviour:
           m_Key: HostingServiceUploadSpeed
         - m_AssemblyName: mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089
           m_ClassName: System.String
-          m_Data: ServerData/StandaloneWindows64;Library/com.unity.addressables/aa/Windows/StandaloneWindows64
+          m_Data: Library/com.unity.addressables/aa/Windows/StandaloneWindows64;ServerData/StandaloneWindows64
           m_Key: ContentRoot
         - m_AssemblyName: mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089
           m_ClassName: System.Boolean

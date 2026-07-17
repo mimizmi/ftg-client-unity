@@ -44,7 +44,31 @@
 > 验证路径：Play → Profiler CPU → 搜索 `BattleLoop.Update` → 分别在三种场景各停留数秒读数。
 > 截图存 `docs/img/`，贴进上表。
 
-## 后续（M4 剩余）
+## UI 合批与重建
 
-- Playables API 替换 `Animator.Play` 硬同步（动画深度控制：混合、变速、逐帧驱动）。
-- 渲染统计（SetPass/Batches）与构建体积前后对比（Addressables 分包后的包体收益）。
+UGUI 的帧成本大头不是渲染而是 **Canvas 重建**：任何一个 Graphic 变脏（改字、改 fillAmount），
+它所在 Canvas 的全部网格重新合批。策略是控制重建的【频率】与【范围】：
+
+| 措施 | 原理 | 位置 |
+|---|---|---|
+| VM 字符串按变化格式化 | `Set` 只去重通知拦不住 `ToString` 分配；改后计时/胜场/连击文本从 60 次/秒降到事件级 | `BattleHudViewModel.Refresh` |
+| 动静分离（嵌套 Canvas） | 计时/连击/播报/血条填充各套一层子 Canvas，脏了只重建自己；代价是各多 1 个 draw call（HUD 元素个位数，划算） | `BattleHudView.IsolateDynamic` |
+| 层级 Canvas 天然隔离 | UIManager 每层独立 Canvas：HUD 每秒跳字不会牵连菜单/弹窗层重建 | `UIManager.Awake` |
+| 关闭无用射线 | Hud/Toast 层 GraphicRaycaster 整层关闭 + HUD 全部 Graphic `raycastTarget=false`，指针事件不再逐帧遍历 | `UIManager` · `BattleHudView.OnOpened` |
+
+**验证方法**：
+- Frame Debugger：战斗中 batch 数应稳定；连击跳数时只有连击文本所在小 Canvas 的批次变化。
+- Profiler → UI / UI Details 模块：`Canvas.BuildBatch` 与 Layout 只在秒跳/命中时出现，且耗时**微秒级**。
+- Game 视图 Stats：对局中 Batches 波动 ≤ 个位数。
+
+## 实测数字·UI（截图后填写）
+
+| 场景 | Canvas.BuildBatch 触发频率 | Batches | 备注 |
+|---|---|---|---|
+| 中立对峙（仅计时跳秒） | 待测（目标：~1 次/秒） | | |
+| 连招进行中 | 待测（目标：仅命中帧） | | |
+
+## 后续（M4 可选补充）
+
+- ~~Playables API 替换 `Animator.Play` 硬同步~~ ✅ 已完成（`FighterAnimationPlayer`，Manual 模式直驱）。
+- 渲染统计（SetPass/Batches）与构建体积前后对比（Addressables 分包后的包体收益）——数字随出包补录。

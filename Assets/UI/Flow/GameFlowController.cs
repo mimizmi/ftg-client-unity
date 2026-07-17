@@ -1,17 +1,24 @@
+using System;
+using Cysharp.Threading.Tasks;
+using Domain.Infrastructure.Input;
 using Domain.Infrastructure.Replay;
 using Domain.Service.App;
 using Domain.Service.Battle;
+using Domain.Service.Lua;
 using Domain.Service.Replay;
 using Domain.UI.Battle;
+using Loxodon.Framework.Contexts;
 using UnityEngine;
+using XLua;
 
 namespace Domain.UI.Flow
 {
     /// <summary>
-    /// 游戏流程状态机：主菜单 → 选人 → 战斗(HUD) → 结算 → 再战/回菜单。
-    /// 状态即"当前开着哪些界面 + 战斗开没开"，转移函数就是下面的方法——
+    /// 游戏流程状态机：主菜单 → 选人 → 战斗(HUD) → 结算 → 再战/回菜单，外加训练场与回放。
     /// 每个转移只做三件事：关旧界面、切战斗开关、开新界面。
-    /// 使用它时把 BattleBootstrap 的 autoStart 取消勾选（否则一进场景就自己开打了）。
+    /// M6 起 UniTask 化：流程步骤就是一段顺序 await（开 Loading → 装配 → 开 HUD），
+    /// 不再有回调金字塔；async void 只允许出现在事件入口（按钮回调/Unity 生命周期），
+    /// 内部一律 UniTask。使用它时把 BattleBootstrap 的 autoStart 取消勾选。
     /// </summary>
     public sealed class GameFlowController : MonoBehaviour
     {
@@ -20,7 +27,7 @@ namespace Domain.UI.Flow
         [SerializeField] private BattleLoop loop;
         [SerializeField] private HotUpdater hotUpdater; // 可选：不拖 = 跳过启动热更检查
 
-        [Header("可选角色（数据驱动，M3 起随角色包扩充）")]
+        [Header("可选角色（数据驱动，随角色包扩充）")]
         [SerializeField] private string[] characterIds = { "Frank" };
 
         [Header("UI 资源 key")]
@@ -29,21 +36,30 @@ namespace Domain.UI.Flow
         [SerializeField] private string resultKey = "UI/Result";
         [SerializeField] private string hudKey = "UI/BattleHud";
         [SerializeField] private string loadingKey = "UI/Loading";
+        [SerializeField] private string noticeKey = "UI/Notice";
 
         private UIScreen menuScreen;
         private UIScreen selectScreen;
         private UIScreen resultScreen;
         private UIScreen hudScreen;
+
         private UIScreen loadingScreen;
         private bool loadingDismissed; // 防时序：战斗装配可能比 Loading 界面自身的加载还快
         private LoadingView loadingView; // loadingScreen 的类型化引用（热更状态文本用）
         private string loadingStatus;    // 最近一次状态：Loading 界面异步开好前先攒着，开好补发
+
+        private UIScreen noticeScreen;
+        private bool noticeChecked; // 公告每会话只探测一次（热更完成后的首次主菜单）
+
+        private bool pendingTraining; // 选人界面确认后进训练场（而非对战）
+        private bool trainingActive;  // 训练进行中：Update 里响应 F1-F4 换假人 / Esc 退出
+
         private string p1Id, p2Id; // 本场对阵（再战用）
 
         private ReplayRecorder recorder;  // 每场真人对局自动录制
         private int replayEndFrame = -1;  // 观看回放时的收场帧（-1 = 不在看回放）
 
-        private void Start()
+        private async void Start()
         {
             if (ui == null || bootstrap == null || loop == null)
             {
@@ -54,104 +70,163 @@ namespace Domain.UI.Flow
             if (hotUpdater != null)
             {
                 // 先热更后进菜单：catalog/增量包在 Loading 界面里拉完，之后的所有加载都拿到新版本
-                ShowLoading();
-                hotUpdater.Run(
-                    onStatus: SetLoadingStatus,
-                    onFinished: () => { HideLoading(); ShowMenu(); });
+                ShowLoading().Forget();
+                await hotUpdater.Run(SetLoadingStatus);
+                HideLoading();
             }
-            else
-            {
-                ShowMenu();
-            }
+            ShowMenu();
         }
 
         // ---- 状态转移 ----
 
-        private void ShowMenu()
+        private async void ShowMenu()
         {
-            ui.Open<MainMenuView>(menuKey, onOpened: view =>
-            {
-                menuScreen = view;
-                view.Bind(new MainMenuViewModel(
-                    onStart: ShowCharacterSelect, onQuit: Quit, onReplay: WatchLatestReplay));
-            });
+            MainMenuView view = await ui.Open<MainMenuView>(menuKey);
+            if (view == null) return;
+            menuScreen = view;
+            view.Bind(new MainMenuViewModel(
+                onStart: ShowCharacterSelect, onQuit: Quit, onReplay: WatchLatestReplay,
+                onTraining: ShowTrainingSelect));
+            TryShowLuaNotice();
         }
 
-        private void ShowCharacterSelect()
+        /// <summary>
+        /// 运营公告：显示开关/标题/正文/关闭回调全部来自 Lua 热更脚本（Lua/notice），
+        /// C# 只搭壳转发。ShowMenu 在热更完成后才会到达，拿到的必是最新脚本。
+        /// 没有公告模块/开关关闭 = 静默跳过（运营侧不发公告是常态）。
+        /// </summary>
+        private async void TryShowLuaNotice()
+        {
+            if (noticeChecked) return;
+            noticeChecked = true;
+
+            var lua = Context.GetApplicationContext().GetService<LuaService>();
+            if (lua == null) return;
+
+            LuaTable notice;
+            try { notice = lua.Require("notice")[0] as LuaTable; }
+            catch (Exception e)
+            {
+                Debug.Log($"[GameFlow] 无 Lua 公告模块（可选）：{e.Message}");
+                return;
+            }
+            if (notice == null || !notice.Get<bool>("show")) return;
+
+            string title = notice.Get<string>("title");
+            string body = notice.Get<string>("body");
+            // Get<Action> 走 xLua 委托桥：反射模式在 Mono/编辑器可用；IL2CPP 需 CSharpCallLua 生成
+            Action onClosed = notice.Get<Action>("on_closed");
+
+            NoticeView view = await ui.Open<NoticeView>(noticeKey);
+            if (view == null) return;
+            noticeScreen = view;
+            view.Bind(new NoticeViewModel(title, body, onClose: () =>
+            {
+                onClosed?.Invoke();
+                CloseScreen(ref noticeScreen);
+            }));
+        }
+
+        private async void ShowCharacterSelect()
         {
             CloseScreen(ref menuScreen);
-            ui.Open<CharacterSelectView>(selectKey, onOpened: view =>
-            {
-                selectScreen = view;
-                view.Bind(new CharacterSelectViewModel(characterIds,
-                    onConfirm: StartBattle, onBack: BackToMenuFromSelect));
-            });
+            CharacterSelectView view = await ui.Open<CharacterSelectView>(selectKey);
+            if (view == null) return;
+            selectScreen = view;
+            view.Bind(new CharacterSelectViewModel(characterIds,
+                onConfirm: (p1, p2) => { if (pendingTraining) StartTraining(p1, p2); else StartBattle(p1, p2); },
+                onBack: BackToMenuFromSelect));
+        }
+
+        private void ShowTrainingSelect()
+        {
+            pendingTraining = true; // 复用选人界面，确认后走训练装配
+            ShowCharacterSelect();
         }
 
         private void BackToMenuFromSelect()
         {
+            pendingTraining = false;
             CloseScreen(ref selectScreen);
             ShowMenu();
         }
 
-        private void StartBattle(string p1, string p2)
+        private async void StartBattle(string p1, string p2)
         {
             CloseScreen(ref selectScreen);
             p1Id = p1;
             p2Id = p2;
 
-            ShowLoading();
-            bootstrap.StartBattle(p1, p2, onFinished: ok =>
-            {
-                HideLoading();
-                if (!ok) { ShowMenu(); return; } // 角色包加载失败：错误已打日志，退回菜单
+            ShowLoading().Forget();
+            bool ok = await bootstrap.StartBattle(p1, p2);
+            HideLoading();
+            if (!ok) { ShowMenu(); return; } // 角色包加载失败：错误已打日志，退回菜单
 
-                loop.Simulation.MatchEnded += OnMatchEnded;
+            loop.Simulation.MatchEnded += OnMatchEnded;
 
-                // 每场自动录制：确定性模拟下回放 = 每帧 6 字节的输入流
-                recorder?.Stop();
-                recorder = new ReplayRecorder(loop.Simulation, p1, p2);
+            // 每场自动录制：确定性模拟下回放 = 每帧 6 字节的输入流
+            recorder?.Stop();
+            recorder = new ReplayRecorder(loop.Simulation, p1, p2);
 
-                OpenHud();
-            });
+            OpenHud();
         }
 
-        private void ShowLoading()
+        // ---- 训练场 ----
+
+        private async void StartTraining(string p1, string p2)
         {
-            loadingDismissed = false;
-            loadingStatus = null;
-            ui.Open<LoadingView>(loadingKey, onOpened: view =>
-            {
-                if (loadingDismissed) { ui.Close(view); return; } // 装配抢先完成：开完即关
-                loadingScreen = view;
-                loadingView = view;
-                if (loadingStatus != null) view.SetStatus(loadingStatus); // 补发攒下的状态
-            });
+            CloseScreen(ref selectScreen);
+            ShowLoading().Forget();
+            // 训练场不录回放（无限时长没有回放意义），也不订 MatchEnded（训练配置到不了终局）
+            bool ok = await bootstrap.StartTraining(p1, p2, DummyPolicies.Idle);
+            HideLoading();
+            if (!ok) { pendingTraining = false; ShowMenu(); return; }
+
+            trainingActive = true;
+            OpenHud();
+            Debug.Log("[Training] 训练场开始：F1 站桩 / F2 蹲姿 / F3 后走 / F4 简单CPU，Esc 退出");
         }
 
-        private void HideLoading()
+        private void Update()
         {
-            loadingDismissed = true;
-            loadingView = null;
-            CloseScreen(ref loadingScreen);
+            if (!trainingActive) return;
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            if (kb == null) return;
+
+            if (kb.escapeKey.wasPressedThisFrame) { ExitTraining(); return; }
+            if (kb.f1Key.wasPressedThisFrame) SetDummy(DummyPolicies.Idle, "站桩");
+            if (kb.f2Key.wasPressedThisFrame) SetDummy(DummyPolicies.Crouch, "蹲姿");
+            if (kb.f3Key.wasPressedThisFrame) SetDummy(DummyPolicies.WalkBack, "后走");
+            if (kb.f4Key.wasPressedThisFrame) SetDummy(DummyPolicies.SimpleCpu, "简单CPU");
         }
 
-        private void SetLoadingStatus(string text)
+        private void SetDummy(IDummyPolicy policy, string label)
         {
-            loadingStatus = text;
-            loadingView?.SetStatus(text);
+            if (bootstrap.TrainingDummy == null) return;
+            bootstrap.TrainingDummy.Policy = policy;
+            Debug.Log($"[Training] 假人行为 → {label}");
         }
 
-        private void OpenHud()
+        private void ExitTraining()
         {
-            ui.Open<BattleHudView>(hudKey, onOpened: view =>
-            {
-                hudScreen = view;
-                view.Bind(new BattleHudViewModel(loop.Simulation));
-            });
+            trainingActive = false;
+            pendingTraining = false;
+            CloseScreen(ref hudScreen);
+            bootstrap.StopBattle();
+            ShowMenu();
         }
 
-        private void OnMatchEnded(int winner)
+        // ---- 战斗内界面 ----
+
+        private async void OpenHud()
+        {
+            BattleHudView view = await ui.Open<BattleHudView>(hudKey);
+            if (view == null) return;
+            hudScreen = view;
+            view.Bind(new BattleHudViewModel(loop.Simulation));
+        }
+
+        private async void OnMatchEnded(int winner)
         {
             loop.Simulation.MatchEnded -= OnMatchEnded;
 
@@ -162,16 +237,15 @@ namespace Domain.UI.Flow
                 recorder = null;
             }
 
-            ui.Open<ResultView>(resultKey, onOpened: view =>
-            {
-                resultScreen = view;
-                view.Bind(new ResultViewModel(winner, onRematch: Rematch, onMenu: BackToMenuFromResult));
-            });
+            ResultView view = await ui.Open<ResultView>(resultKey);
+            if (view == null) return;
+            resultScreen = view;
+            view.Bind(new ResultViewModel(winner, onRematch: Rematch, onMenu: BackToMenuFromResult));
         }
 
         // ---- 回放观看 ----
 
-        private void WatchLatestReplay()
+        private async void WatchLatestReplay()
         {
             ReplayData data = ReplayFileStore.LoadLatest();
             if (data == null)
@@ -181,17 +255,15 @@ namespace Domain.UI.Flow
             }
 
             CloseScreen(ref menuScreen);
-            ShowLoading();
-            bootstrap.StartReplay(data, onFinished: ok =>
-            {
-                HideLoading();
-                if (!ok) { ShowMenu(); return; }
+            ShowLoading().Forget();
+            bool ok = await bootstrap.StartReplay(data);
+            HideLoading();
+            if (!ok) { ShowMenu(); return; }
 
-                replayEndFrame = data.FrameCount + 60; // 播完留 1 秒余韵再收场
-                loop.Simulation.TickFinished += OnReplayTick;
+            replayEndFrame = data.FrameCount + 60; // 播完留 1 秒余韵再收场
+            loop.Simulation.TickFinished += OnReplayTick;
 
-                OpenHud();
-            });
+            OpenHud();
         }
 
         private void OnReplayTick(int frame)
@@ -233,6 +305,33 @@ namespace Domain.UI.Flow
 #else
             Application.Quit();
 #endif
+        }
+
+        // ---- Loading ----
+
+        private async UniTask ShowLoading()
+        {
+            loadingDismissed = false;
+            loadingStatus = null;
+            LoadingView view = await ui.Open<LoadingView>(loadingKey);
+            if (view == null) return;
+            if (loadingDismissed) { ui.Close(view); return; } // 装配抢先完成：开完即关
+            loadingScreen = view;
+            loadingView = view;
+            if (loadingStatus != null) view.SetStatus(loadingStatus); // 补发攒下的状态
+        }
+
+        private void HideLoading()
+        {
+            loadingDismissed = true;
+            loadingView = null;
+            CloseScreen(ref loadingScreen);
+        }
+
+        private void SetLoadingStatus(string text)
+        {
+            loadingStatus = text;
+            loadingView?.SetStatus(text);
         }
 
         private void CloseScreen(ref UIScreen screen)

@@ -8,14 +8,16 @@ namespace Domain.UI.Flow
     public sealed class MainMenuViewModel : ViewModelBase
     {
         public ICommand StartCommand { get; }
+        public ICommand TrainingCommand { get; }
         public ICommand ReplayCommand { get; }
         public ICommand QuitCommand { get; }
 
-        public MainMenuViewModel(Action onStart, Action onQuit, Action onReplay)
+        public MainMenuViewModel(Action onStart, Action onQuit, Action onReplay, Action onTraining)
         {
             StartCommand = new SimpleCommand(onStart);
             QuitCommand = new SimpleCommand(onQuit);
             ReplayCommand = new SimpleCommand(onReplay);
+            TrainingCommand = new SimpleCommand(onTraining);
         }
     }
 }

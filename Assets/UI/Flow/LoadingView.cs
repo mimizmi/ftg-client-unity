@@ -22,11 +22,13 @@ namespace Domain.UI.Flow
             if (label == null) label = transform.Find("Label")?.GetComponent<TMP_Text>();
         }
 
+        // 0GC：三帧点点动画用静态缓存，不再每渲染帧拼一个新字符串
+        private static readonly string[] DotFrames = { "LOADING.", "LOADING..", "LOADING..." };
+
         private void Update()
         {
             if (label == null) return;
-            int dots = 1 + (int)(Time.unscaledTime * 2f) % 3;
-            label.text = status ?? ("LOADING" + new string('.', dots));
+            label.text = status ?? DotFrames[(int)(Time.unscaledTime * 2f) % 3];
         }
     }
 }

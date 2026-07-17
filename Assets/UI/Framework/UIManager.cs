@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -49,8 +50,9 @@ namespace Domain.UI
                 scaler.referenceResolution = referenceResolution;
                 scaler.matchWidthOrHeight = 0.5f;
 
-                // Toast 层永不拦截点击
-                if (layer == UILayer.Toast)
+                // Toast 层永不拦截点击；Hud 层纯显示（战斗 HUD 无交互控件）——
+                // 关掉 raycaster，指针事件不再逐帧遍历这两层。将来 HUD 需要按钮时再放开
+                if (layer == UILayer.Toast || layer == UILayer.Hud)
                     go.GetComponent<GraphicRaycaster>().enabled = false;
 
                 layerRoots[layer] = (RectTransform)go.transform;
@@ -59,39 +61,38 @@ namespace Domain.UI
         }
 
         /// <summary>
-        /// 打开界面。层级由 prefab 上的 UIScreen.layer 决定。
-        /// onOpened 在界面完成入栈后回调（异步加载时机不确定，不要依赖返回时序）。
+        /// 打开界面（await 到界面完成入栈）。层级由 prefab 上的 UIScreen.layer 决定。
+        /// 失败返回 null（已打日志）。同步/异步后端对调用方透明——都是一句 await。
         /// </summary>
-        public void Open<T>(string key, object arg = null, Action<T> onOpened = null) where T : UIScreen
+        public async UniTask<T> Open<T>(string key, object arg = null) where T : UIScreen
         {
-            AssetLoader.Load(key, prefab =>
+            GameObject prefab = await AssetLoader.Load(key);
+            if (prefab == null)
             {
-                if (prefab == null)
-                {
-                    Debug.LogError($"[UIManager] 找不到 UI 资源：\"{key}\"（检查 Resources 路径 / Addressables key）");
-                    return;
-                }
+                Debug.LogError($"[UIManager] 找不到 UI 资源：\"{key}\"（检查 Resources 路径 / Addressables key）");
+                return null;
+            }
 
-                GameObject instance = Instantiate(prefab);
-                var screen = instance.GetComponent<T>();
-                if (screen == null)
-                {
-                    Debug.LogError($"[UIManager] \"{key}\" 的 prefab 根节点上没有 {typeof(T).Name} 组件");
-                    Destroy(instance);
-                    return;
-                }
+            GameObject instance = Instantiate(prefab);
+            var screen = instance.GetComponent<T>();
+            if (screen == null)
+            {
+                Debug.LogError($"[UIManager] \"{key}\" 的 prefab 根节点上没有 {typeof(T).Name} 组件");
+                Destroy(instance);
+                AssetLoader.Release(key); // 没有界面诞生就不会有 Close，这里得自己还账
+                return null;
+            }
 
-                instance.transform.SetParent(layerRoots[screen.Layer], false);
+            instance.transform.SetParent(layerRoots[screen.Layer], false);
 
-                List<UIScreen> stack = layerStacks[screen.Layer];
-                if (stack.Count > 0) stack[stack.Count - 1].OnBlur();
-                stack.Add(screen);
+            List<UIScreen> stack = layerStacks[screen.Layer];
+            if (stack.Count > 0) stack[stack.Count - 1].OnBlur();
+            stack.Add(screen);
 
-                screen.Key = key;
-                screen.OnOpened(arg);
-                screen.OnFocus();
-                onOpened?.Invoke(screen);
-            });
+            screen.Key = key;
+            screen.OnOpened(arg);
+            screen.OnFocus();
+            return screen;
         }
 
         /// <summary>关闭界面：出栈 → OnClosed → 销毁 → 释放资源 → 焦点还给新栈顶。</summary>

@@ -28,6 +28,32 @@ namespace Domain.UI.Battle
 
         private void Awake() => AutoWire();
 
+        public override void OnOpened(object arg)
+        {
+            base.OnOpened(arg);
+
+            // HUD 纯显示、零交互（全 OneWay 绑定）：关掉全部 Graphic 的射线目标，
+            // GraphicRaycaster 不再逐帧遍历它们（层级 Canvas 的 raycaster 也已被 UIManager 关掉，双保险）
+            foreach (Graphic g in GetComponentsInChildren<Graphic>(true))
+                g.raycastTarget = false;
+
+            // 动静分离：高频变化的控件各自套一层嵌套 Canvas——它们脏了只重建自己
+            // 的小网格，不再牵连整张 HUD 画布重建/重新合批（代价是各多一个 draw call，
+            // HUD 元素个位数，这笔账划算；验证见 docs/PERFORMANCE.md 的 UI 章节）
+            IsolateDynamic(timerText);
+            IsolateDynamic(p1ComboText);
+            IsolateDynamic(p2ComboText);
+            IsolateDynamic(announcementText);
+            IsolateDynamic(p1HealthFill);
+            IsolateDynamic(p2HealthFill);
+        }
+
+        private static void IsolateDynamic(Component c)
+        {
+            if (c == null || c.GetComponent<Canvas>() != null) return;
+            c.gameObject.AddComponent<Canvas>(); // 不 overrideSorting：继承父画布排序，仅隔离重建域
+        }
+
         /// <summary>由 BattleHudBinder 在模拟就绪后调用。</summary>
         public void Bind(BattleHudViewModel vm)
         {

@@ -1,0 +1,15 @@
+-- 运营公告模块：C# 侧的 NoticeView 只是壳，这里决定一切。
+-- 【热更演示】改 show/title/body 或 on_closed 逻辑 → Addressables Build/
+-- Update a Previous Build → 重启进主菜单即生效——UI 逻辑热更，不发版。
+local M = {}
+
+M.show = false
+M.title = "运营公告"
+M.body = "本窗口的显示开关、标题、正文与关闭回调全部来自 notice.lua。\n" ..
+         "改这个文件推一次资源更新，不用重新出包。"
+
+function M.on_closed()
+    print("[Lua] 公告已关闭——这个回调也是 Lua 的，C# 只负责转发点击")
+end
+
+return M

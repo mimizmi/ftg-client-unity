@@ -1,0 +1,11 @@
+-- 逻辑热更冒烟脚本：证明 Addressables → LuaEnv 加载链路已通。
+-- 【热更演示】改下面任意文本/逻辑 → Addressables Build/Update a Previous Build →
+-- 重启进游戏即生效——不发版改逻辑。
+local M = {}
+
+M.version = "1.0.0"
+M.notice = "欢迎来到 FTG！本条公告的文本与显示逻辑均来自 Lua 热更脚本。"
+
+print(("[Lua] boot.lua 已加载 v%s"):format(M.version))
+
+return M

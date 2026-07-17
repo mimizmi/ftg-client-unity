@@ -3,7 +3,10 @@
     "rootNamespace": "",
     "references": [
         "FTG.Core",
-        "FTG.Runtime"
+        "FTG.Runtime",
+        "Unity.Addressables",
+        "Unity.Addressables.Editor",
+        "Unity.ResourceManager"
     ],
     "includePlatforms": [
         "Editor"
