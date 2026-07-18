@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using Domain.Infrastructure.FixedPoint;
 using Domain.Infrastructure.Motion;
 using UnityEngine;
 
@@ -91,8 +92,13 @@ namespace Domain.Infrastructure.Battle
         {
             MoveRootMotion rm = motion.Find(move.MoveId);
             if (rm?.Motion == null || rm.Motion.Length == 0) return;
- 
-            move.RootMotion = rm.Motion;
+
+            // 边界转换点：烘焙 JSON 是 float（格式不变、随时可重烘），
+            // 装载时一次性转定点，此后模拟内全程整数运算（N2 定点化）
+            var fixedMotion = new FixVec2[rm.Motion.Length];
+            for (int i = 0; i < rm.Motion.Length; i++)
+                fixedMotion[i] = FixVec2.FromFloat(rm.Motion[i].x, rm.Motion[i].y);
+            move.RootMotion = fixedMotion;
  
             if (rm.Frames != move.TotalFrames)
             {

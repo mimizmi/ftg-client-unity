@@ -1,5 +1,6 @@
 using System;
 using Domain.Infrastructure.Battle;
+using Domain.Infrastructure.FixedPoint;
 using Domain.Infrastructure.Input;
 using Domain.Infrastructure.Motion;
 using UnityEngine;
@@ -61,7 +62,7 @@ namespace FTG.Tests
             var fighter = new FighterState(seat, moveTable, def.Movement)
             {
                 Name = name,
-                Position = new Vector2(spawnX, 0f),
+                Position = FixVec2.FromFloat(spawnX, 0f),
             };
             foreach (MoveData move in def.Moves)
                 fighter.AddMove(move);
@@ -81,8 +82,9 @@ namespace FTG.Tests
 
         private static ulong HashFighter(ulong h, FighterState f)
         {
-            h = Fnv(h, (uint)BitConverter.SingleToInt32Bits(f.Position.x));
-            h = Fnv(h, (uint)BitConverter.SingleToInt32Bits(f.Position.y));
+            // N2 定点化：直接哈希 Raw——定点没有 float 位模式的平台歧义，这正是迁移的意义
+            h = Fnv(h, (uint)f.Position.X.Raw);
+            h = Fnv(h, (uint)f.Position.Y.Raw);
             h = Fnv(h, (uint)f.Health);
             h = Fnv(h, (byte)f.Status);
             h = Fnv(h, (uint)f.MoveFrame);

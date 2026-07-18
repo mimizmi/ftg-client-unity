@@ -26,6 +26,9 @@ namespace Domain.Infrastructure.FixedPoint
         public static FixVec2 FromFloat(float x, float y)
             => new FixVec2(Fix.FromFloat(x), Fix.FromFloat(y));
 
+        /// <summary>X 取反（"面朝右"空间数据 → 世界空间的朝向镜像，位移/判定通用）。</summary>
+        public FixVec2 MirrorX() => new FixVec2(-X, Y);
+
         public static FixVec2 operator +(FixVec2 a, FixVec2 b) => new FixVec2(a.X + b.X, a.Y + b.Y);
         public static FixVec2 operator -(FixVec2 a, FixVec2 b) => new FixVec2(a.X - b.X, a.Y - b.Y);
         public static FixVec2 operator -(FixVec2 a) => new FixVec2(-a.X, -a.Y);

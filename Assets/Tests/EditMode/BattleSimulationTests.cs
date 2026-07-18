@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Domain.Infrastructure.Battle;
+using Domain.Infrastructure.FixedPoint;
 using Domain.Infrastructure.Input;
 using Domain.Infrastructure.Motion;
 using NUnit.Framework;
@@ -49,7 +50,7 @@ namespace FTG.Tests
             var fighter = new FighterState(seat, moveTable, def.Movement)
             {
                 Name = name,
-                Position = new Vector2(spawnX, 0f),
+                Position = FixVec2.FromFloat(spawnX, 0f),
             };
             foreach (MoveData move in def.Moves)
                 fighter.AddMove(move);
@@ -100,8 +101,8 @@ namespace FTG.Tests
 
         private static ulong HashFighter(ulong h, FighterState f)
         {
-            h = Fnv(h, (uint)BitConverter.SingleToInt32Bits(f.Position.x));
-            h = Fnv(h, (uint)BitConverter.SingleToInt32Bits(f.Position.y));
+            h = Fnv(h, (uint)f.Position.X.Raw);
+            h = Fnv(h, (uint)f.Position.Y.Raw);
             h = Fnv(h, (uint)f.Health);
             h = Fnv(h, (byte)f.Status);
             h = Fnv(h, (uint)f.MoveFrame);
@@ -155,7 +156,7 @@ namespace FTG.Tests
             RunResult run = Run();
 
             // 反空转哨兵：哈希全程一致但什么都没发生的模拟没有意义
-            Assert.That(run.Simulation.P1.Position.x, Is.Not.EqualTo(-1f), "P1 应当走动过");
+            Assert.That(run.Simulation.P1.Position.X, Is.Not.EqualTo(Fix.FromInt(-1)), "P1 应当走动过");
             Assert.That(run.MovesStarted, Is.GreaterThan(0), "P1 应当出过招");
             Assert.That(run.FrameHashes[0], Is.Not.EqualTo(run.FrameHashes[Frames - 1]),
                 "首末帧状态应不同");

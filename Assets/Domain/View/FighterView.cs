@@ -101,8 +101,8 @@ namespace Domain.Infrastructure.Battle
             {
                 int elapsed = loop.CurrentFrame - lastSeenFrame;
                 // 正常推进 1 帧：旧终点变新起点；卡顿跨了多帧：直接跳，不做穿越插值
-                prevPosition = (elapsed == 1 && lastSeenFrame >= 0) ? currentPosition : fighter.Position;
-                currentPosition = fighter.Position;
+                prevPosition = (elapsed == 1 && lastSeenFrame >= 0) ? currentPosition : ToVector2(fighter.Position);
+                currentPosition = ToVector2(fighter.Position);
                 lastSeenFrame = loop.CurrentFrame;
  
                 SyncAnimation(fighter);
@@ -134,6 +134,10 @@ namespace Domain.Infrastructure.Battle
                 player.Tick(Time.deltaTime);
         }
  
+        /// <summary>定点 → 浮点（表现层边界：只在这里转换，模拟内禁 float）。</summary>
+        private static Vector2 ToVector2(Domain.Infrastructure.FixedPoint.FixVec2 v)
+            => new Vector2(v.X.ToFloat(), v.Y.ToFloat());
+
         private void SyncAnimation(FighterState fighter)
         {
             // 傀儡原则：播放头【完全】由逻辑帧驱动，Animator 自身不得自走时间。

@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using Domain.Infrastructure.FixedPoint;
 using Domain.Infrastructure.Input;
 using UnityEngine;
 
@@ -13,17 +14,17 @@ namespace Domain.Infrastructure.Battle
         Hitstun,
         Blockstun
     }
-    
+
     public readonly struct FighterSnapshot
     {
         public readonly int Frame;
-        public readonly Vector2 Position;
+        public readonly FixVec2 Position;
         public readonly bool FacingRight;
         public readonly FighterStatus Status;
         public readonly string MoveId;
         public readonly int MoveFrame;
         public readonly MovePhase Phase;
- 
+
         public FighterSnapshot(int frame, FighterState f)
         {
             Frame = frame;
@@ -35,18 +36,19 @@ namespace Domain.Infrastructure.Battle
             Phase = f.Phase;
         }
     }
-    
+
     public sealed class FighterState
     {
         public string Name;
-        public Vector2 Position;
+        /// <summary>位置（定点，N2 起）：模拟内唯一权威，表现层经 ToFloat 只读取用。</summary>
+        public FixVec2 Position;
         public bool FacingRight = true;
         public int Health = 1000;
- 
+
         private readonly IInputSeat input;
         private readonly MoveTable moveTable;
         private readonly Dictionary<string, MoveData> moves = new Dictionary<string, MoveData>();
- 
+
         public FighterStatus Status { get; private set; } = FighterStatus.Neutral;
         public MoveData CurrentMove { get; private set; }
         public int MoveFrame { get; private set; }
@@ -74,7 +76,7 @@ namespace Domain.Infrastructure.Battle
 
         /// <summary>由组合根注入"受击类别 → 受击招式 MoveId"映射（受击招式本身在 Moves 里）。</summary>
         public void SetReactions(Dictionary<HitReaction, string> map) => reactionMoveIds = map;
- 
+
         private int stunRemaining;
         private int stunTotal;      // 本次硬直的总帧数（受击/防御时置入），供表现层硬同步受击动画
         private bool moveConnected; // 当前招是否已命中过（防止多段重复判定，多段招需扩展）
@@ -101,7 +103,7 @@ namespace Domain.Infrastructure.Battle
         // ---- 顿帧(hitstop)：命中瞬间冻结模拟推进的帧数，冲击感来源 ----
         // 由 CollisionResolver 在命中/被防时给攻防双方各置一个。纯 int 状态，进快照即可。
         private int hitstop;
- 
+
         /// <summary>出招瞬间广播——对手侧"看到对方起手"的反应系统订阅这里，而不是去读按键。</summary>
         public event Action<FighterState, MoveData> MoveStarted;
 
@@ -128,9 +130,9 @@ namespace Domain.Infrastructure.Battle
                 pendingCancelSource, pendingCancelKind, this) != null;
             matchesConsumeId = c => c.Id == pendingConsumeId;
         }
-        
+
         public MovementController Movement { get; }
- 
+
         /// <summary>
         /// 当前姿态。招式表用它把同一输入解析成不同招式（5LP / 2LP / j.LP）。
         /// 目前由方向键推断；将来接入跳跃系统后 Airborne 应由 Y 坐标/跳跃状态决定。
@@ -146,19 +148,19 @@ namespace Domain.Infrastructure.Battle
                 return (dir == 1 || dir == 2 || dir == 3) ? Stance.Crouching : Stance.Standing;
             }
         }
- 
+
         // ---- 对外只读视图 ----
         public InputBuffer InputHistory => input.Buffer;   // 拒止/拆投回看 & 假人读意图
         public IInputSeat InputController => input;
         public CommandQueue Commands => input.Commands;
- 
+
         public MovePhase Phase =>
             (Status == FighterStatus.Attacking || Status == FighterStatus.CounterStance) && CurrentMove != null
                 ? CurrentMove.PhaseAt(MoveFrame)
                 : MovePhase.None;
- 
+
         public bool Actionable => Status == FighterStatus.Neutral;
- 
+
         /// <summary>
         /// 无敌。两个来源：招式自带的无敌帧（升龙 1~8 帧），
         /// 以及移动状态机的后跃步无敌帧——后者是后跃能"逃"的原因。
@@ -176,17 +178,17 @@ namespace Domain.Infrastructure.Battle
         public bool CanMoveConnect =>
             Status == FighterStatus.Attacking && CurrentMove != null
                                               && CurrentMove.HasBoxes(BoxKind.Hit) && !moveConnected;
- 
+
         public void CollectHurtboxes(List<Box> results)
         {
             if (TryCollect(BoxKind.Hurt, results)) return;
             results.Clear();
-            
+
             Debug.LogWarning(
                 $"[FighterState] {Name} 本帧没有受击框：当前动作未在 HitboxEditor 里画 Hurt 框，" +
                 "且待机招式也没有。角色此刻【打不中】——请补画。", null);
         }
-        
+
         /// <summary>
         /// 收集本帧的推挡框（防重叠）。同样走回退链。
         ///
@@ -229,9 +231,9 @@ namespace Domain.Infrastructure.Battle
         }
 
         public FighterSnapshot Snapshot(int frame) => new FighterSnapshot(frame, this);
- 
+
         public void AddMove(MoveData move) => moves[move.MoveId] = move;
- 
+
         /// <summary>由 BattleLoop 每逻辑帧调用（输入采样之后、碰撞裁决之前）。</summary>
         public void Tick(int frame)
         {
@@ -294,7 +296,7 @@ namespace Domain.Infrastructure.Battle
                     return;
             }
         }
- 
+
         /// <summary>
         /// 招式进行中的取消判定。两条通道，相位决定走哪条：
         ///
@@ -349,7 +351,7 @@ namespace Domain.Infrastructure.Battle
                     return;
                 }
             }
- 
+
             // ③ 普通技：裸按键 → 招式表解析（姿态决定 5LP / 2LP / j.LP）。
             // 当帧无新按下时，回看预输入缓冲：上一招后摇/移动锁定帧里按下的键在此兑现，
             // 消除"必须精确压在恢复第一帧、早一帧被吞"的卡顿。命中窗口 NormalBufferFrames。
@@ -371,7 +373,7 @@ namespace Domain.Infrastructure.Battle
                 }
             }
         }
- 
+
         public bool StartMove(string moveId)
         {
             if (!moves.TryGetValue(moveId, out MoveData move)) return false;
@@ -393,14 +395,14 @@ namespace Domain.Infrastructure.Battle
         /// </summary>
         private void ApplyRootMotion()
         {
-            Vector2[] motion = CurrentMove?.RootMotion;
+            FixVec2[] motion = CurrentMove?.RootMotion;
             if (motion == null) return;
 
             int index = MoveFrame - 1;
             if (index < 0 || index >= motion.Length) return;
 
-            Vector2 delta = motion[index];
-            if (!FacingRight) delta.x = -delta.x;
+            FixVec2 delta = motion[index];
+            if (!FacingRight) delta = delta.MirrorX();
             Position += delta;
         }
 
@@ -418,7 +420,7 @@ namespace Domain.Infrastructure.Battle
         /// 注意 simFrame【不】重置——它只用于给预输入计龄，跨回合单调递增无害，
         /// 而清零反而会让"计龄基准倒退"产生幽灵缓冲。
         /// </summary>
-        public void ResetForRound(Vector2 spawnPosition, int health)
+        public void ResetForRound(FixVec2 spawnPosition, int health)
         {
             Position = spawnPosition;
             Health = health;
@@ -497,7 +499,7 @@ namespace Domain.Infrastructure.Battle
         /// </summary>
         private void ApplyReactionRootMotion()
         {
-            Vector2[] motion = reactionMove?.RootMotion;
+            FixVec2[] motion = reactionMove?.RootMotion;
             if (motion == null) return;
 
             // 空中被击时位置由跳跃抛物线独占，受击位移不叠加（否则双重位移）。
@@ -507,8 +509,8 @@ namespace Domain.Infrastructure.Battle
             int index = stunTotal - stunRemaining; // 0 起：首个硬直 tick 结算第 1 帧位移
             if (index < 0 || index >= motion.Length) return;
 
-            Vector2 delta = motion[index];
-            if (!FacingRight) delta.x = -delta.x;
+            FixVec2 delta = motion[index];
+            if (!FacingRight) delta = delta.MirrorX();
             Position += delta;
         }
 

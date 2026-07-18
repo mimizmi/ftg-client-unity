@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Domain.Infrastructure.FixedPoint;
 using UnityEngine;
 
 namespace Domain.Infrastructure.Battle
@@ -103,8 +104,8 @@ namespace Domain.Infrastructure.Battle
         public event Action<int> TickFinished;
 
         private readonly List<HitEvent> hitEvents = new List<HitEvent>(4);
-        private readonly Vector2 p1Spawn;
-        private readonly Vector2 p2Spawn;
+        private readonly FixVec2 p1Spawn;
+        private readonly FixVec2 p2Spawn;
         private int phaseTimer;
 
         public BattleSimulation(FighterState p1, FighterState p2,
@@ -129,7 +130,7 @@ namespace Domain.Infrastructure.Battle
             CurrentFrame++;
 
             // ① 朝向同步：位置关系决定朝向，写回角色与输入座位（搓招镜像依赖它）
-            bool p1FacesRight = P1.Position.x <= P2.Position.x;
+            bool p1FacesRight = P1.Position.X <= P2.Position.X;
             P1.FacingRight = p1FacesRight;
             P2.FacingRight = !p1FacesRight;
             P1.InputController.FacingRight = p1FacesRight;

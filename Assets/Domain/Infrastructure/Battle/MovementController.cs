@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using Domain.Infrastructure.FixedPoint;
 using Domain.Infrastructure.Input;
 using UnityEngine;
 
@@ -19,6 +20,10 @@ namespace Domain.Infrastructure.Battle
     /// 【风险窗口的设计】DashStartup / JumpSquat / DashRecovery 都是不可取消的帧，
     /// 它们是这些强力移动的代价：跳跃起跳前 4 帧被抓到就是确反，
     /// 冲刺收招 4 帧内被打就是 Counter Hit。没有这些窗口，移动就是无风险的，游戏会失衡。
+    ///
+    /// N2 定点化：位移增量全程 FixVec2（数据装载时已从 JSON float 转定点），
+    /// 状态机内不再出现浮点运算；MotionNormalizedTime 是唯一例外——
+    /// 它是表现层（动画播放头）的只读口径，不参与任何模拟决策。
     /// </summary>
     public sealed class MovementController
     {
@@ -27,9 +32,9 @@ namespace Domain.Infrastructure.Battle
         private readonly Func<string, MoveData> resolveMove;
 
         public MovementState State { get; private set; } = MovementState.Idle;
-        
+
         public MoveData CurrentMotion { get; private set; }
-        
+
         public int MotionFrame { get; private set; }
 
         // 空中冲刺
@@ -37,7 +42,7 @@ namespace Domain.Infrastructure.Battle
         private MoveData airDash;
         private int airDashFrame;
         private bool airDashMirrored;
- 
+
         private bool motionMirrored;  // 起始瞬间锁定的朝向，保证 cross-up 不改变已出去的轨迹
         private bool wasUpLastFrame;  // 跳跃边沿检测：按住上不放不应连发跳
 
@@ -49,9 +54,9 @@ namespace Domain.Infrastructure.Battle
         }
 
         // ===================== 对外状态查询 =====================
- 
+
         public bool IsJumping => State == MovementState.Jumping;
- 
+
         /// <summary>
         /// 当前移动招式的阶段。复用招式的三段语义：
         ///   跳跃：Startup=起跳预备(地面) / Active=腾空 / Recovery=落地硬直
@@ -60,15 +65,15 @@ namespace Domain.Infrastructure.Battle
         public MovePhase Phase => CurrentMotion != null
             ? CurrentMotion.PhaseAt(MotionFrame)
             : MovePhase.None;
- 
+
         /// <summary>正在空中冲刺（此时跳跃帧被冻结，动画停在当前姿势 → 滞空感）。</summary>
         public bool IsAirDashing => airDash != null;
- 
+
         /// <summary>
         /// 是否腾空。起跳预备段【仍在地面】——这正是跳跃可被确反的原因，不算 Airborne。
         /// </summary>
         public bool IsAirborne => IsJumping && (Phase == MovePhase.Active || IsAirDashing);
- 
+
         /// <summary>无敌帧。来自移动招式自身的 MoveData.InvulnFrom/To（后跃步的无敌就写在那里）。</summary>
         public bool IsInvulnerable =>
             CurrentMotion != null && CurrentMotion.InvulnTo > 0
@@ -102,14 +107,15 @@ namespace Domain.Infrastructure.Battle
                 }
             }
         }
- 
+
         // 注：原 CanGuard 已随防御机制一并移除（本作无防御，见 CollisionResolver 拼招层）。
 
         /// <summary>供 FighterView 播动画：当前移动招式的 clip 名（= MoveId = Animator State）。</summary>
         public string MotionClipId => IsAirDashing ? airDash.MoveId : CurrentMotion?.MoveId;
- 
+
         /// <summary>
         /// 动画归一化播放位置。一次性动画从头播到尾；循环动画同理（Animator 侧勾 Loop Time）。
+        /// 【表现层专用】唯一保留 float 的口径——只喂动画播放头，不回流模拟。
         /// </summary>
         public float MotionNormalizedTime
         {
@@ -121,20 +127,20 @@ namespace Domain.Infrastructure.Battle
                         ? 0f
                         : Mathf.Clamp01(airDashFrame / (float)airDash.TotalFrames);
                 }
- 
+
                 if (CurrentMotion == null || CurrentMotion.TotalFrames <= 0) return 0f;
                 return Mathf.Clamp01(MotionFrame / (float)CurrentMotion.TotalFrames);
             }
         }
- 
+
         // ===================== 每帧推进 =====================
- 
-        public void Tick(bool actionable, bool facingRight, ref Vector2 position)
+
+        public void Tick(bool actionable, bool facingRight, ref FixVec2 position)
         {
             byte dir = facingRight
                 ? input.Buffer.Latest.Direction
                 : Numpad.Mirror(input.Buffer.Latest.Direction);
- 
+
             // 不可行动（出招中/硬直中）→ 移动归零。跳跃除外：
             // 空中被打仍在空中，跳跃的帧序列继续走完（这也让空中招期间抛物线继续）
             if (!actionable && !IsJumping)
@@ -143,12 +149,12 @@ namespace Domain.Infrastructure.Battle
                 wasUpLastFrame = IsUp(dir);
                 return;
             }
- 
+
             position += Advance(dir, facingRight);
             wasUpLastFrame = IsUp(dir);
         }
- 
-        private Vector2 Advance(byte dir, bool facingRight)
+
+        private FixVec2 Advance(byte dir, bool facingRight)
         {
             switch (State)
             {
@@ -169,19 +175,19 @@ namespace Domain.Infrastructure.Battle
                 case MovementState.WalkBackward:
                 case MovementState.Run:
                     return Looping(dir, facingRight);
- 
+
                 case MovementState.Dash:
                 case MovementState.BackDash:
                     return OneShot(dir, facingRight);
- 
+
                 case MovementState.Jumping:
                     return Jumping(dir, facingRight);
             }
-            return Vector2.zero;
+            return FixVec2.Zero;
         }
- 
+
         /// <summary>地面中立态：检测冲刺/跳跃/行走的起始。</summary>
-        private Vector2 Grounded(byte dir, bool facingRight)
+        private FixVec2 Grounded(byte dir, bool facingRight)
         {
             // ---- 冲刺 / 后跃（66 / 44，来自 MotionDetector）----
             if (input.Commands.TryPeek(out DetectedCommand cmd,
@@ -195,7 +201,7 @@ namespace Domain.Infrastructure.Battle
                     return CurrentFrameMotion();
                 }
             }
- 
+
             // ---- 跳跃：要求【本帧刚进入】上方向。持续按住不会连发跳 ----
             if (IsUp(dir) && !wasUpLastFrame)
             {
@@ -205,12 +211,12 @@ namespace Domain.Infrastructure.Battle
                 if (StartMotion(id, MovementState.Jumping, facingRight))
                     return CurrentFrameMotion();
             }
- 
+
             // ---- 下蹲：必须先于行走判定 ----
             // 斜下(1/3)也是蹲（IsForward(3)/IsBackward(1) 为 true，不先拦会误入走路，
             // 与 FighterState.CurrentStance 的 1/2/3=Crouching 判定矛盾）。蹲姿无位移。
             if (IsDown(dir) && StartCrouch(facingRight))
-                return Vector2.zero;
+                return FixVec2.Zero;
 
             // ---- 行走 ----
             if (IsForward(dir) && StartMotion(config.WalkForwardId, MovementState.WalkForward, facingRight))
@@ -218,12 +224,12 @@ namespace Domain.Infrastructure.Battle
 
             if (IsBackward(dir) && StartMotion(config.WalkBackwardId, MovementState.WalkBackward, facingRight))
                 return CurrentFrameMotion();
- 
+
             // 无移动输入 → 保持待机。Idle 是招式，所以判定框永远有数据源
             EnsureIdle(facingRight);
-            return Vector2.zero;
+            return FixVec2.Zero;
         }
-        
+
         /// <summary>
         /// 进蹲入口：有下蹲过渡 clip 则先播过渡（站→蹲），没配/缺数据则直接进循环（可降级）。
         /// 三段式：CrouchEnter(一次性) → Crouch(循环) → CrouchExit(一次性) → Grounded。
@@ -243,7 +249,7 @@ namespace Domain.Infrastructure.Battle
         /// 跳跃优先：按上立刻放弃过渡回 Grounded 起跳——演出永远给操作让路。
         /// 中途松开下：起身动画从【对称位置】接续（蹲到 30% 就从起身的 70% 开始），姿态不跳变。
         /// </summary>
-        private Vector2 CrouchingEnter(byte dir, bool facingRight)
+        private FixVec2 CrouchingEnter(byte dir, bool facingRight)
         {
             if (IsUp(dir))
             {
@@ -262,17 +268,17 @@ namespace Domain.Infrastructure.Battle
                 int frame = MirrorProgress(CurrentMotion, MotionFrame, exit);
                 StartMotion(config.CrouchExitId, MovementState.CrouchExit, facingRight);
                 MotionFrame = frame;
-                return Vector2.zero;
+                return FixVec2.Zero;
             }
 
             MotionFrame++;
             if (MotionFrame > CurrentMotion.TotalFrames)
                 StartMotion(config.CrouchId, MovementState.Crouch, facingRight); // 蹲到底 → 进循环
-            return Vector2.zero;
+            return FixVec2.Zero;
         }
 
         /// <summary>蹲姿循环：零位移。松开下 → 起身过渡；按上 → 立刻起跳（演出让路）。</summary>
-        private Vector2 Crouching(byte dir, bool facingRight)
+        private FixVec2 Crouching(byte dir, bool facingRight)
         {
             if (!IsDown(dir))
             {
@@ -282,7 +288,7 @@ namespace Domain.Infrastructure.Battle
                     if (exit != null)
                     {
                         StartMotion(config.CrouchExitId, MovementState.CrouchExit, facingRight);
-                        return Vector2.zero;
+                        return FixVec2.Zero;
                     }
                 }
                 // 按上（跳跃优先）或没配起身过渡 → 直接回 Grounded 重新判定
@@ -292,14 +298,14 @@ namespace Domain.Infrastructure.Battle
 
             MotionFrame++;
             if (MotionFrame > CurrentMotion.TotalFrames) MotionFrame = 1; // 循环
-            return Vector2.zero; // 蹲姿不产生位移（即使 clip 带杂散 RootMotion 也不吃）
+            return FixVec2.Zero; // 蹲姿不产生位移（即使 clip 带杂散 RootMotion 也不吃）
         }
 
         /// <summary>
         /// 起身过渡（蹲→站）。播完回 Grounded（当帧即可走/跳/再判定）。
         /// 中途再按下：下蹲动画从对称位置接回去；按上：立刻起跳。
         /// </summary>
-        private Vector2 CrouchingExit(byte dir, bool facingRight)
+        private FixVec2 CrouchingExit(byte dir, bool facingRight)
         {
             if (IsUp(dir))
             {
@@ -320,7 +326,7 @@ namespace Domain.Infrastructure.Battle
                 {
                     StartMotion(config.CrouchId, MovementState.Crouch, facingRight);
                 }
-                return Vector2.zero;
+                return FixVec2.Zero;
             }
 
             MotionFrame++;
@@ -329,18 +335,23 @@ namespace Domain.Infrastructure.Battle
                 Stop();
                 return Grounded(dir, facingRight); // 起身完成，当帧恢复地面判定
             }
-            return Vector2.zero;
+            return FixVec2.Zero;
         }
 
         /// <summary>
         /// 把当前过渡的进度镜像到反向过渡上：进度 p 处改主意 → 反向动画从 (1-p) 处接续。
         /// 前提是两段过渡互为倒放（下蹲/起身通常如此），姿态即可无缝衔接。
+        /// N2 起整数化：整数乘除 + 加半四舍五入，替代原 Mathf.Clamp01/Lerp 浮点路径——
+        /// 它决定后续帧号，属模拟状态，模拟决策禁 float。
         /// </summary>
         private static int MirrorProgress(MoveData from, int frame, MoveData to)
         {
             if (from == null || to == null || from.TotalFrames <= 0 || to.TotalFrames <= 0) return 1;
-            float p = Mathf.Clamp01(frame / (float)from.TotalFrames);
-            return Mathf.Clamp(Mathf.RoundToInt((1f - p) * to.TotalFrames), 1, to.TotalFrames);
+            int clamped = frame < 0 ? 0 : frame > from.TotalFrames ? from.TotalFrames : frame;
+            // mirrored = to.Total - round(p * to.Total)，p = clamped/from.Total（整数域四舍五入）
+            int mirrored = to.TotalFrames
+                - (clamped * to.TotalFrames + from.TotalFrames / 2) / from.TotalFrames;
+            return mirrored < 1 ? 1 : mirrored > to.TotalFrames ? to.TotalFrames : mirrored;
         }
 
         private void TickIdleFrame()
@@ -349,21 +360,21 @@ namespace Domain.Infrastructure.Battle
             MotionFrame++;
             if (MotionFrame > CurrentMotion.TotalFrames) MotionFrame = 1;
         }
-        
+
         private void EnsureIdle(bool facingRight)
         {
             if (State == MovementState.Idle && CurrentMotion != null) return;
             StartMotion(config.IdleId, MovementState.Idle, facingRight);
         }
-        
+
         public MoveData IdleMove => resolveMove(config.IdleId);
- 
+
         /// <summary>
         /// 循环型移动（走路/跑步）：帧号在 1..TotalFrames 之间循环，随时可中断。
         /// 位移逐帧取自 RootMotion —— 于是角色的移动【完全跟随动画里脚的实际位移】，
         /// 包括一个步态周期内的自然快慢（蹬地快、抬脚慢），脚下打滑从根本上消失。
         /// </summary>
-        private Vector2 Looping(byte dir, bool facingRight)
+        private FixVec2 Looping(byte dir, bool facingRight)
         {
             // 按到下方向（含斜下 1/3）退出行走转蹲——与 CurrentStance 的 1/2/3=蹲 判定保持一致。
             // 按到上方向（含斜上 7/9）也必须退出：IsForward(9)/IsBackward(7) 为 true，
@@ -373,30 +384,30 @@ namespace Domain.Infrastructure.Battle
                 && (State == MovementState.WalkForward ? IsForward(dir)
                     : State == MovementState.WalkBackward ? IsBackward(dir)
                     : IsForward(dir)); // Run
- 
+
             if (!keep)
             {
                 Stop();
                 return Grounded(dir, facingRight); // 同帧重新判定（可能是转向或起跳）
             }
- 
+
             MotionFrame++;
             if (MotionFrame > CurrentMotion.TotalFrames) MotionFrame = 1; // 循环
- 
+
             return CurrentFrameMotion();
         }
- 
+
         /// <summary>一次性移动（冲刺/后跃）：帧号走到头即结束。</summary>
-        private Vector2 OneShot(byte dir, bool facingRight)
+        private FixVec2 OneShot(byte dir, bool facingRight)
         {
             MotionFrame++;
- 
+
             if (MotionFrame > CurrentMotion.TotalFrames)
             {
                 Stop();
                 return Grounded(dir, facingRight); // 收招当帧即可再行动
             }
- 
+
             // 冲刺末尾仍按住前且配了跑步循环 → 转入跑步（街霸三代式）
             if (State == MovementState.Dash
                 && MotionFrame > CurrentMotion.TotalFrames - CurrentMotion.Recovery
@@ -406,15 +417,15 @@ namespace Domain.Infrastructure.Battle
             {
                 return CurrentFrameMotion();
             }
- 
+
             return CurrentFrameMotion();
         }
- 
+
         /// <summary>
         /// 跳跃推进。位移全部来自跳跃招式的 RootMotion（抛物线烘在动画里），
         /// 没有 velocity 也没有 gravity —— 落地就是"帧数走完"，不需要落地检测。
         /// </summary>
-        private Vector2 Jumping(byte dir, bool facingRight)
+        private FixVec2 Jumping(byte dir, bool facingRight)
         {
             // ---- 起跳预备期（仍在地面）：跳向可修正（SF 式宽容）----
             // 起跳边沿那一帧锁死方向的话，"先按上、慢几帧补前"只能出垂直跳。
@@ -431,12 +442,12 @@ namespace Domain.Infrastructure.Battle
                 {
                     airDash = null;
                     airDashFrame = 0;
-                    return Vector2.zero; // 本帧交还给跳跃，下一帧继续抛物线
+                    return FixVec2.Zero; // 本帧交还给跳跃，下一帧继续抛物线
                 }
-                Vector2 ad = MotionAt(airDash, airDashFrame);
-                return airDashMirrored ? new Vector2(-ad.x, ad.y) : ad;
+                FixVec2 ad = MotionAt(airDash, airDashFrame);
+                return airDashMirrored ? ad.MirrorX() : ad;
             }
- 
+
             // ---- 触发空中冲刺 ----
             if (Phase == MovePhase.Active
                 && airDashesUsed < config.AirDashCount
@@ -451,30 +462,30 @@ namespace Domain.Infrastructure.Battle
                     airDashesUsed++;
                     airDash = ad;
                     airDashFrame = 1;
- 
+
                     // 后冲时把位移取反；朝向在起始瞬间锁定（cross-up 不改变已出去的轨迹）
                     bool backward = cmd.Id == "DASH_B";
                     airDashMirrored = facingRight ? backward : !backward;
- 
-                    Vector2 d = MotionAt(airDash, 1);
-                    return airDashMirrored ? new Vector2(-d.x, d.y) : d;
+
+                    FixVec2 d = MotionAt(airDash, 1);
+                    return airDashMirrored ? d.MirrorX() : d;
                 }
             }
- 
+
             // ---- 正常推进：吃 RootMotion 的一帧 ----
             MotionFrame++;
- 
+
             if (MotionFrame > CurrentMotion.TotalFrames)
             {
                 // 帧数走完 = 落地完成。动画的抛物线自然回到地面，无需 Y 钳制
                 Stop();
                 airDashesUsed = 0;
-                return Vector2.zero;
+                return FixVec2.Zero;
             }
- 
+
             return CurrentFrameMotion();
         }
- 
+
         // ===================== 辅助 =====================
 
         /// <summary>
@@ -497,7 +508,7 @@ namespace Domain.Infrastructure.Battle
         private bool StartMotion(string moveId, MovementState state, bool facingRight)
         {
             if (string.IsNullOrEmpty(moveId)) return false;
- 
+
             MoveData move = resolveMove(moveId);
             if (move == null)
             {
@@ -507,14 +518,14 @@ namespace Domain.Infrastructure.Battle
                     "帧数用 Startup/Active/Recovery，位移用 FG/Batch Root Motion Baker 烘焙。");
                 return false;
             }
- 
+
             CurrentMotion = move;
             MotionFrame = 1;
             State = state;
             motionMirrored = !facingRight; // 起始瞬间锁定朝向
             return true;
         }
- 
+
         /// <summary>结束当前移动招式，回到待机。注意仍然持有 Idle 招式（判定框需要它）。</summary>
         private void Stop()
         {
@@ -522,29 +533,29 @@ namespace Domain.Infrastructure.Battle
             MotionFrame = 0;
             State = MovementState.Idle;
         }
- 
+
         /// <summary>取当前移动招式本帧的位移（已转为世界空间）。</summary>
-        private Vector2 CurrentFrameMotion()
+        private FixVec2 CurrentFrameMotion()
         {
-            if (CurrentMotion == null) return Vector2.zero;
-            Vector2 m = MotionAt(CurrentMotion, MotionFrame);
-            return motionMirrored ? new Vector2(-m.x, m.y) : m;
+            if (CurrentMotion == null) return FixVec2.Zero;
+            FixVec2 m = MotionAt(CurrentMotion, MotionFrame);
+            return motionMirrored ? m.MirrorX() : m;
         }
- 
+
         /// <summary>取招式某帧的位移增量（面朝右空间）。越界返回零。</summary>
-        private static Vector2 MotionAt(MoveData move, int frame)
+        private static FixVec2 MotionAt(MoveData move, int frame)
         {
-            Vector2[] rm = move.RootMotion;
-            if (rm == null) return Vector2.zero;
+            FixVec2[] rm = move.RootMotion;
+            if (rm == null) return FixVec2.Zero;
             int i = frame - 1;
-            return (i >= 0 && i < rm.Length) ? rm[i] : Vector2.zero;
+            return (i >= 0 && i < rm.Length) ? rm[i] : FixVec2.Zero;
         }
- 
+
         private static bool IsUp(byte dir) => dir == 7 || dir == 8 || dir == 9;
         private static bool IsDown(byte dir) => dir == 1 || dir == 2 || dir == 3;
         private static bool IsForward(byte dir) => dir == 6 || dir == 3 || dir == 9;
         private static bool IsBackward(byte dir) => dir == 4 || dir == 1 || dir == 7;
- 
+
         /// <summary>受击/出招打断移动。跳跃由调用方保护（空中被打仍在空中）。</summary>
         public void Reset()
         {

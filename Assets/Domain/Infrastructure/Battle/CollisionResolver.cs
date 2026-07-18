@@ -1,6 +1,6 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
+using Domain.Infrastructure.FixedPoint;
 using Domain.Infrastructure.Input;
-using UnityEngine;
 
 namespace Domain.Infrastructure.Battle
 {
@@ -24,10 +24,10 @@ namespace Domain.Infrastructure.Battle
         public DefenseOutcome Outcome;
 
         /// <summary>
-        /// 接触点（世界系）：首个相交的 攻击框∩受击框（拼招则为双方攻击框）交集矩形中心。
-        /// 由判定当场算出——盒数据的确定性函数。表现层（火花/演出）按这里生成，别再估。
+        /// 接触点（世界系，定点）：首个相交的 攻击框∩受击框（拼招则为双方攻击框）交集矩形中心。
+        /// 由判定当场算出——盒数据的确定性函数。表现层（火花/演出）经 ToFloat 取用，别再估。
         /// </summary>
-        public Vector2 ContactPoint;
+        public FixVec2 ContactPoint;
 
         public override string ToString() =>
             $"[帧{Frame}] {Attacker.Name}:{Move.MoveId} → {Defender.Name} = {Outcome}";
@@ -48,6 +48,9 @@ namespace Domain.Infrastructure.Battle
     /// - 拒止：碰撞成立帧，回看【守方自己】的 InputBuffer 最近 N 帧（InputQuery）
     /// - 当身：读【攻方招式】的属性 + 【守方招式】的当前帧是否在接触窗口内（状态层）
     /// - CH：读【守方招式】的 Phase 是否为 Startup/Recovery（状态层）
+    ///
+    /// N2 定点化：判定几何（FixRect）与接触点全整数运算；CH 伤害倍率也改用
+    /// 定点分数（6/5 = 1.2），跨语言逐位一致。
     /// </summary>
     public sealed class CollisionResolver
     {
@@ -60,7 +63,7 @@ namespace Domain.Infrastructure.Battle
         public int ParryWindow = 8;        // 碰撞前 N 帧内轻点方向有效
         public bool ParryForward = true;   // true=前拒止(SF3 式)，false=后拒止(JD 式)
         public int ThrowTechWindow = 5;    // 拆投窗口
-        public float CounterHitDamageScale = 1.2f;
+        public Fix CounterHitDamageScale = Fix.FromFraction(6, 5); // CH 伤害 ×1.2（定点分数）
         public int CounterHitBonusStun = 8;
 
         // ---- 顿帧(hitstop)：命中定格帧数。命中是主手调旋钮，CH 由它派生 ----
@@ -74,7 +77,7 @@ namespace Domain.Infrastructure.Battle
 
             // ⓪ 拼招：双方攻击框相遇 → 两招互相抵消 + 双方定格 + 双方取消窗同开。
             // 本帧不再裁定命中（拼招覆盖一切——即使同帧攻击框也扫到了对方身体）。
-            if (ClashEnabled && TestClash(p1, p2, out Vector2 clashPoint))
+            if (ClashEnabled && TestClash(p1, p2, out FixVec2 clashPoint))
             {
                 var clash = new HitEvent
                 {
@@ -88,8 +91,8 @@ namespace Domain.Infrastructure.Battle
             }
 
             // 先对称检测再统一施加：同帧互中 = 相杀(trade)，两边都吃结果
-            bool p1HitsP2 = TestOverlap(p1, p2, out Vector2 p1Contact);
-            bool p2HitsP1 = TestOverlap(p2, p1, out Vector2 p2Contact);
+            bool p1HitsP2 = TestOverlap(p1, p2, out FixVec2 p1Contact);
+            bool p2HitsP1 = TestOverlap(p2, p1, out FixVec2 p2Contact);
 
             if (p1HitsP2) results.Add(Judge(frame, p1, p2, p1Contact));
             if (p2HitsP1) results.Add(Judge(frame, p2, p1, p2Contact));
@@ -106,7 +109,7 @@ namespace Domain.Infrastructure.Battle
         /// 只有打击技参与拼招——投是贴身抓取，没有"兵刃相接"的语义。
         /// 拼招事件的 Attacker/Defender 只是记名（p1/p2），双方地位完全对等。
         /// </summary>
-        private bool TestClash(FighterState a, FighterState b, out Vector2 contact)
+        private bool TestClash(FighterState a, FighterState b, out FixVec2 contact)
         {
             contact = default;
             if (!a.CanMoveConnect || !b.CanMoveConnect) return false;
@@ -120,10 +123,10 @@ namespace Domain.Infrastructure.Battle
 
             for (int i = 0; i < attackBoxes.Count; i++)
             {
-                Rect ra = attackBoxes[i].ToWorld(a.Position, a.FacingRight);
+                FixRect ra = attackBoxes[i].ToWorld(a.Position, a.FacingRight);
                 for (int j = 0; j < defendBoxes.Count; j++)
                 {
-                    Rect rb = defendBoxes[j].ToWorld(b.Position, b.FacingRight);
+                    FixRect rb = defendBoxes[j].ToWorld(b.Position, b.FacingRight);
                     if (ra.Overlaps(rb))
                     {
                         contact = IntersectionCenter(ra, rb);
@@ -138,7 +141,7 @@ namespace Domain.Infrastructure.Battle
         /// 攻击框 vs 受击框。两者都来自 BoxTracks（可视化编辑、关键帧插值），
         /// 受击框随动画姿态变化——蹲下时框变矮，这是"上段打空、下段命中"的机制基础。
         /// </summary>
-        private bool TestOverlap(FighterState attacker, FighterState defender, out Vector2 contact)
+        private bool TestOverlap(FighterState attacker, FighterState defender, out FixVec2 contact)
         {
             contact = default;
             if (!attacker.CanMoveConnect) return false;
@@ -152,10 +155,10 @@ namespace Domain.Infrastructure.Battle
 
             for (int i = 0; i < attackBoxes.Count; i++)
             {
-                Rect hit = attackBoxes[i].ToWorld(attacker.Position, attacker.FacingRight);
+                FixRect hit = attackBoxes[i].ToWorld(attacker.Position, attacker.FacingRight);
                 for (int j = 0; j < defendBoxes.Count; j++)
                 {
-                    Rect hurt = defendBoxes[j].ToWorld(defender.Position, defender.FacingRight);
+                    FixRect hurt = defendBoxes[j].ToWorld(defender.Position, defender.FacingRight);
                     if (hit.Overlaps(hurt))
                     {
                         contact = IntersectionCenter(hit, hurt);
@@ -167,16 +170,16 @@ namespace Domain.Infrastructure.Battle
         }
 
         /// <summary>两矩形交集的中心。仅在已确认 Overlaps 后调用（交集必非空）。</summary>
-        private static Vector2 IntersectionCenter(Rect a, Rect b)
+        private static FixVec2 IntersectionCenter(FixRect a, FixRect b)
         {
-            float xMin = Mathf.Max(a.xMin, b.xMin);
-            float xMax = Mathf.Min(a.xMax, b.xMax);
-            float yMin = Mathf.Max(a.yMin, b.yMin);
-            float yMax = Mathf.Min(a.yMax, b.yMax);
-            return new Vector2((xMin + xMax) * 0.5f, (yMin + yMax) * 0.5f);
+            Fix xMin = Fix.Max(a.XMin, b.XMin);
+            Fix xMax = Fix.Min(a.XMax, b.XMax);
+            Fix yMin = Fix.Max(a.YMin, b.YMin);
+            Fix yMax = Fix.Min(a.YMax, b.YMax);
+            return new FixVec2((xMin + xMax) * Fix.Half, (yMin + yMax) * Fix.Half);
         }
 
-        private HitEvent Judge(int frame, FighterState attacker, FighterState defender, Vector2 contact)
+        private HitEvent Judge(int frame, FighterState attacker, FighterState defender, FixVec2 contact)
         {
             MoveData move = attacker.CurrentMove;
             attacker.MarkMoveConnected();
@@ -244,7 +247,7 @@ namespace Domain.Infrastructure.Battle
 
                 case DefenseOutcome.CounterHit:
                     ev.Defender.ApplyHit(
-                        Mathf.RoundToInt(move.Damage * CounterHitDamageScale),
+                        (Fix.FromInt(move.Damage) * CounterHitDamageScale).RoundToInt(),
                         move.HitstunFrames + CounterHitBonusStun, move.Reaction);
                     break;
 

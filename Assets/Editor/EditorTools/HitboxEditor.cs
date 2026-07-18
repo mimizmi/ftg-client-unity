@@ -692,7 +692,7 @@ namespace Editor.EditorTools
                     BoxKeyframe here = track.Keys.FirstOrDefault(k => k.Frame == currentFrame);
  
                     // 数值精调：Scene 里拖拽是粗调，这里补精确输入
-                    if (track.TryEvaluate(currentFrame, out Box evaluated))
+                    if (track.TryEvaluateAuthoring(currentFrame, out BoxKeyframe evaluated))
                     {
                         EditorGUI.BeginChangeCheck();
                         float x = EditorGUILayout.FloatField("X (前后)", evaluated.X);
@@ -819,7 +819,7 @@ namespace Editor.EditorTools
             for (int i = 0; i < currentMove.Tracks.Count; i++)
             {
                 BoxTrack track = currentMove.Tracks[i];
-                if (!track.TryEvaluate(currentFrame, out Box box)) continue;
+                if (!track.TryEvaluateAuthoring(currentFrame, out BoxKeyframe box)) continue;
  
                 bool isSelected = selectedTrack == i;
                 bool isKeyframe = track.Keys.Any(k => k.Frame == currentFrame);
@@ -869,7 +869,7 @@ namespace Editor.EditorTools
             }
         }
  
-        private void DrawBox(Vector3 origin, Box box, Color color, bool selected, bool isKeyframe)
+        private void DrawBox(Vector3 origin, BoxKeyframe box, Color color, bool selected, bool isKeyframe)
         {
             Vector3 center = origin + new Vector3(box.X, box.Y, 0f);
             var size = new Vector3(box.W, box.H, visualDepth);
@@ -912,7 +912,7 @@ namespace Editor.EditorTools
         /// 否则在 3D 视图里拖拽会引入 Z 轴漂移，而 Z 在判定数据里根本不存在。
         /// 任何改动自动在当前帧打关键帧——所见即所得。
         /// </summary>
-        private void EditBox(Vector3 origin, BoxTrack track, Box box)
+        private void EditBox(Vector3 origin, BoxTrack track, BoxKeyframe box)
         {
             EditorGUI.BeginChangeCheck();
  
@@ -982,8 +982,10 @@ namespace Editor.EditorTools
  
         private void AddKeyframe(BoxTrack track, int frame)
         {
-            if (!track.TryEvaluate(frame, out Box box))
-                box = track.Keys.Count > 0 ? track.Keys[0].ToBox() : new Box(0.5f, 1f, 0.5f, 0.4f);
+            if (!track.TryEvaluateAuthoring(frame, out BoxKeyframe box))
+                box = track.Keys.Count > 0
+                    ? track.Keys[0]
+                    : new BoxKeyframe { X = 0.5f, Y = 1f, W = 0.5f, H = 0.4f };
  
             UpsertKeyframe(track, new BoxKeyframe
             {

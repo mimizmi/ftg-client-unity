@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using Domain.Infrastructure.Battle;
+using Domain.Infrastructure.FixedPoint;
 using Domain.Infrastructure.Input;
 using Domain.Infrastructure.Motion;
 using Domain.Infrastructure.Replay;
@@ -212,10 +213,10 @@ namespace Domain.Service.Battle
             CollisionResolver resolver = battleContext.GetService<CollisionResolver>();
 
             FighterState p1 = BuildPlayer(out p1Context, out p1Instance,
-                "P1", seat1, p1Prefab, repository.Get(p1Id), new Vector2(p1SpawnX, 0f), messenger);
+                "P1", seat1, p1Prefab, repository.Get(p1Id), FixVec2.FromFloat(p1SpawnX, 0f), messenger);
 
             FighterState p2 = BuildPlayer(out p2Context, out p2Instance,
-                "P2", seat2, p2Prefab, repository.Get(p2Id), new Vector2(p2SpawnX, 0f), messenger);
+                "P2", seat2, p2Prefab, repository.Get(p2Id), FixVec2.FromFloat(p2SpawnX, 0f), messenger);
 
             loop.Initialize(p1, p2, resolver, messenger, configOverride);
 
@@ -225,7 +226,7 @@ namespace Domain.Service.Battle
 
         private FighterState BuildPlayer(out PlayerContext playerContext, out GameObject instance,
             string seatName, IInputSeat seat, GameObject characterPrefab,
-            FighterDefinition definition, Vector2 spawnPosition, Messenger battleMessenger)
+            FighterDefinition definition, FixVec2 spawnPosition, Messenger battleMessenger)
         {
             // PlayerContext 默认继承 ApplicationContext 的全部服务
             playerContext = new PlayerContext(name);
@@ -254,7 +255,7 @@ namespace Domain.Service.Battle
             fighter.SetReactions(definition.ReactionMoves);
 
             instance = Instantiate(characterPrefab,
-                new Vector3(spawnPosition.x, spawnPosition.y, 0f), Quaternion.identity);
+                new Vector3(spawnPosition.X.ToFloat(), spawnPosition.Y.ToFloat(), 0f), Quaternion.identity);
             instance.name = $"{seatName}_{definition.CharacterId}";
 
             // 玩家域服务注册：随 PlayerContext.Dispose 释放。

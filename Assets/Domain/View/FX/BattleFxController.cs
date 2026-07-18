@@ -93,7 +93,7 @@ namespace Domain.View.FX
         private static Vector3 ContactPoint(HitEvent ev)
         {
             // 判定层算好的真实接触点（攻击框∩受击框交集中心），蹲踢在腿、跳踢在头，不再估算
-            return new Vector3(ev.ContactPoint.x, ev.ContactPoint.y, 0f);
+            return new Vector3(ev.ContactPoint.X.ToFloat(), ev.ContactPoint.Y.ToFloat(), 0f);
         }
 
         private void OnRoundStarted(int round)

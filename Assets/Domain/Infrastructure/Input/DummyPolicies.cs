@@ -1,10 +1,12 @@
 using Domain.Infrastructure.Battle;
+using Domain.Infrastructure.FixedPoint;
 
 namespace Domain.Infrastructure.Input
 {
     /// <summary>
     /// 内置假人策略库（训练场 F1-F4 对应四档）。
-    /// 全部是入参纯函数——节奏用帧号取模表达（确定性），绝不用随机数。
+    /// 全部是入参纯函数——节奏用帧号取模表达（确定性），绝不用随机数；
+    /// 距离判断走定点（N2 起策略读的 Position 就是定点，天然一致）。
     /// </summary>
     public static class DummyPolicies
     {
@@ -30,7 +32,7 @@ namespace Domain.Infrastructure.Input
             public DummyInput Decide(int frame, FighterState self, FighterState opponent)
             {
                 // 方向是世界系：对手在右就往左(4)退，反之往右(6)退
-                bool opponentOnRight = opponent.Position.x >= self.Position.x;
+                bool opponentOnRight = opponent.Position.X >= self.Position.X;
                 return new DummyInput(opponentOnRight ? (byte)4 : (byte)6);
             }
         }
@@ -41,14 +43,13 @@ namespace Domain.Infrastructure.Input
         /// </summary>
         private sealed class SimpleCpuPolicy : IDummyPolicy
         {
-            private const float PokeRange = 1.1f; // 大致一个轻拳的够得着距离
+            // 大致一个轻拳的够得着距离（1.1，定点分数——不用 FromFloat(1.1f)，语义更明确）
+            private static readonly Fix PokeRange = Fix.FromFraction(11, 10);
 
             public DummyInput Decide(int frame, FighterState self, FighterState opponent)
             {
-                bool opponentOnRight = opponent.Position.x >= self.Position.x;
-                float distance = opponentOnRight
-                    ? opponent.Position.x - self.Position.x
-                    : self.Position.x - opponent.Position.x;
+                bool opponentOnRight = opponent.Position.X >= self.Position.X;
+                Fix distance = Fix.Abs(opponent.Position.X - self.Position.X);
 
                 if (distance > PokeRange)
                     return new DummyInput(opponentOnRight ? (byte)6 : (byte)4);

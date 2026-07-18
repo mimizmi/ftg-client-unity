@@ -1,5 +1,6 @@
 using System;
 using Domain.Infrastructure.Battle;
+using Domain.Infrastructure.FixedPoint;
 using Domain.Infrastructure.Input;
 using Domain.Infrastructure.Motion;
 using NUnit.Framework;
@@ -51,7 +52,7 @@ namespace FTG.Tests
             var fighter = new FighterState(seat, moveTable, def.Movement)
             {
                 Name = name,
-                Position = new Vector2(spawnX, 0f),
+                Position = FixVec2.FromFloat(spawnX, 0f),
             };
             foreach (MoveData move in def.Moves)
                 fighter.AddMove(move);
@@ -173,12 +174,12 @@ namespace FTG.Tests
             // 冻结期：一直按前也不许动
             for (int i = 0; i < 29; i++) sim.Tick();
             Assert.That(started, Is.False);
-            Assert.That(sim.P1.Position.x, Is.EqualTo(-1f), "Intro 期间必须冻结");
+            Assert.That(sim.P1.Position.X, Is.EqualTo(Fix.FromInt(-1)), "Intro 期间必须冻结");
 
             // 开打后走 60 帧必然位移
             TickUntil(sim, () => started, 5, "RoundStarted");
             for (int i = 0; i < 60; i++) sim.Tick();
-            Assert.That(sim.P1.Position.x, Is.Not.EqualTo(-1f), "开打后应能走动");
+            Assert.That(sim.P1.Position.X, Is.Not.EqualTo(Fix.FromInt(-1)), "开打后应能走动");
         }
     }
 }
