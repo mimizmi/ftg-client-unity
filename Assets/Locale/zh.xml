@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FTG 中文语言表：Loxodon XML 格式，Addressables 地址 Locale/zh（随 catalog 热更） -->
+<resources>
+    <string name="menu.start">开始游戏</string>
+    <string name="menu.training">训练场</string>
+    <string name="menu.replay">观看回放</string>
+    <string name="menu.quit">退出游戏</string>
+    <!-- 语言按钮显示"切过去之后"的语言名，业界惯例 -->
+    <string name="menu.language">English</string>
+
+    <string name="select.title">选择角色</string>
+    <string name="select.confirm">确认</string>
+    <string name="select.back">返回</string>
+
+    <string name="result.draw">平局</string>
+    <string name="result.wins">玩家 {0} 获胜</string>
+    <string name="result.rematch">再战一局</string>
+    <string name="result.menu">回主菜单</string>
+
+    <string name="notice.close">关闭</string>
+</resources>

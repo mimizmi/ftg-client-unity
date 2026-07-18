@@ -11,9 +11,10 @@ namespace Domain.UI.Flow
         public ICommand RematchCommand { get; }
         public ICommand MenuCommand { get; }
 
-        public ResultViewModel(int winner, Action onRematch, Action onMenu)
+        // 胜者文案由调用方本地化后传入：VM 不依赖本地化服务，保持纯数据搬运
+        public ResultViewModel(string winnerText, Action onRematch, Action onMenu)
         {
-            WinnerText = winner == 0 ? "DRAW" : $"PLAYER {winner} WINS";
+            WinnerText = winnerText;
             RematchCommand = new SimpleCommand(onRematch);
             MenuCommand = new SimpleCommand(onMenu);
         }

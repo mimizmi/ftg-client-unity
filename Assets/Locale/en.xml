@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FTG English locale table: Loxodon XML format, Addressables address Locale/en (hot-updatable) -->
+<resources>
+    <string name="menu.start">START</string>
+    <string name="menu.training">TRAINING</string>
+    <string name="menu.replay">REPLAY</string>
+    <string name="menu.quit">QUIT</string>
+    <string name="menu.language">中文</string>
+
+    <string name="select.title">CHARACTER SELECT</string>
+    <string name="select.confirm">CONFIRM</string>
+    <string name="select.back">BACK</string>
+
+    <string name="result.draw">DRAW</string>
+    <string name="result.wins">PLAYER {0} WINS</string>
+    <string name="result.rematch">REMATCH</string>
+    <string name="result.menu">MAIN MENU</string>
+
+    <string name="notice.close">CLOSE</string>
+</resources>

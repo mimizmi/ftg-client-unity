@@ -1,13 +1,16 @@
 using System;
+using System.Globalization;
 using Cysharp.Threading.Tasks;
 using Domain.Infrastructure.Input;
 using Domain.Infrastructure.Replay;
 using Domain.Service.App;
 using Domain.Service.Battle;
+using Domain.Service.Localization;
 using Domain.Service.Lua;
 using Domain.Service.Replay;
 using Domain.UI.Battle;
 using Loxodon.Framework.Contexts;
+using Loxodon.Framework.Localizations;
 using UnityEngine;
 using XLua;
 
@@ -74,6 +77,7 @@ namespace Domain.UI.Flow
                 await hotUpdater.Run(SetLoadingStatus);
                 HideLoading();
             }
+            await InitLocalization(); // 热更之后再装语言表：翻译文案吃到最新版本
             ShowMenu();
         }
 
@@ -86,7 +90,7 @@ namespace Domain.UI.Flow
             menuScreen = view;
             view.Bind(new MainMenuViewModel(
                 onStart: ShowCharacterSelect, onQuit: Quit, onReplay: WatchLatestReplay,
-                onTraining: ShowTrainingSelect));
+                onTraining: ShowTrainingSelect, onLanguage: ToggleLanguage));
             TryShowLuaNotice();
         }
 
@@ -112,8 +116,9 @@ namespace Domain.UI.Flow
             }
             if (notice == null || !notice.Get<bool>("show")) return;
 
-            string title = notice.Get<string>("title");
-            string body = notice.Get<string>("body");
+            // 双语公告：英文环境优先取 *_en 字段，缺失回落中文——Lua 侧可以只写一种语言
+            string title = PickLocalized(notice, "title");
+            string body = PickLocalized(notice, "body");
             // Get<Action> 走 xLua 委托桥：反射模式在 Mono/编辑器可用；IL2CPP 需 CSharpCallLua 生成
             Action onClosed = notice.Get<Action>("on_closed");
 
@@ -240,7 +245,10 @@ namespace Domain.UI.Flow
             ResultView view = await ui.Open<ResultView>(resultKey);
             if (view == null) return;
             resultScreen = view;
-            view.Bind(new ResultViewModel(winner, onRematch: Rematch, onMenu: BackToMenuFromResult));
+            string winnerText = winner == 0
+                ? Localization.Current.GetText("result.draw", "DRAW")
+                : Localization.Current.GetFormattedText("result.wins", winner);
+            view.Bind(new ResultViewModel(winnerText, onRematch: Rematch, onMenu: BackToMenuFromResult));
         }
 
         // ---- 回放观看 ----
@@ -305,6 +313,47 @@ namespace Domain.UI.Flow
 #else
             Application.Quit();
 #endif
+        }
+
+        // ---- 本地化（Loxodon Localizations，语言表经 Addressables 热更）----
+
+        private const string LanguagePrefsKey = "ftg.language";
+
+        private static bool IsEnglish
+            => Localization.Current.CultureInfo.TwoLetterISOLanguageName != "zh";
+
+        /// <summary>
+        /// 装载语言表提供器。语言码归一化为两字母（zh/en）：玩家上次选择优先，否则跟系统语言。
+        /// 在热更完成后调用，语言表拉到的是最新版本。
+        /// </summary>
+        private async UniTask InitLocalization()
+        {
+            Localization loc = Localization.Current;
+            string code = PlayerPrefs.GetString(LanguagePrefsKey, "");
+            if (code.Length == 0)
+                code = loc.CultureInfo.TwoLetterISOLanguageName == "zh" ? "zh" : "en";
+            loc.CultureInfo = new CultureInfo(code);
+            await loc.AddDataProvider(new AddressablesLocalizationDataProvider(AddressablesTextReader.Read));
+        }
+
+        private void ToggleLanguage()
+        {
+            string next = IsEnglish ? "zh" : "en";
+            PlayerPrefs.SetString(LanguagePrefsKey, next);
+            // 赋值 CultureInfo 触发框架 Refresh：提供器按新语言重装表，观察属性原地更新，
+            // 所有挂 LocalizedTextMeshPro 的文本自动刷新，无需重开界面
+            Localization.Current.CultureInfo = new CultureInfo(next);
+        }
+
+        /// <summary>Lua 表双语字段：英文环境优先 {field}_en，缺失回落中文主字段。</summary>
+        private static string PickLocalized(LuaTable t, string field)
+        {
+            if (IsEnglish)
+            {
+                string en = t.Get<string>(field + "_en");
+                if (!string.IsNullOrEmpty(en)) return en;
+            }
+            return t.Get<string>(field);
         }
 
         // ---- Loading ----

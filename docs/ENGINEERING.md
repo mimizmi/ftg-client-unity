@@ -193,6 +193,22 @@ clip）在 FighterView 的 **Clip Aliases** 表里配映射。
 - **asmdef 注意**：程序集名是 `XLua.Runtime` 而非 `XLua`——托管 `XLua.dll` 会与
   原生插件 `xlua.dll` 同名冲突（Windows 不分大小写），Unity 直接拒绝。
 
+### 本地化（中/英，Loxodon Localizations）
+- **不自研**：用 Loxodon 自带的 Localizations 模块（`Localization.Current` + 观察属性），
+  项目侧只补两个框架预留扩展点的实现：
+  `AddressablesLocalizationDataProvider`（`IDataProvider`，语言表接 Addressables）、
+  `LocalizedTextMeshPro`（`AbstractLocalized<TMP_Text>`，官方只带 UGUI Text 版）。
+- **语言表**：Loxodon 标准 XML（`<string name="menu.start">开始游戏</string>`），
+  文件 `Assets/Locale/zh.xml|en.xml`，地址 `Locale/zh|en`——**与帧数据/Lua 同一条
+  catalog 管线，翻译文案可热更**。装载时机在 HotUpdater 之后（`GameFlow.InitLocalization`）。
+- **静态文本**：prefab 文本节点挂 `LocalizedTextMeshPro` 填 key；**动态文案**（结算词）
+  由 GameFlow 经 `GetText/GetFormattedText` 取词后注入 VM（VM 不依赖本地化服务）。
+- **切语言**：主菜单可选 `Language` 按钮 → 赋值 `CultureInfo` 触发框架 Refresh，
+  全部挂件文本原地自动刷新；选择存 PlayerPrefs（`ftg.language`），语言码归一化 zh/en。
+- **刻意保留英文**：HUD 战斗播报（ROUND/FIGHT!/K.O./TIME UP）——格斗游戏行业惯例，
+  SF6 中文版播报同样是英文。
+- **Lua 公告双语**：`notice.lua` 可选 `title_en/body_en` 字段，英文环境优先、缺失回落中文。
+
 ### 调手感
 - 移动速度/跳跃/冲刺 → `MovementConfig`；预输入窗口 → `CommandQueue.BufferFrames`
 - 帧数据（发生/持续/恢复/判定框）→ `Assets/BoxData/*.json`（可热更）

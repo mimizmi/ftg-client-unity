@@ -23,6 +23,18 @@ MonoBehaviour:
     m_SerializedLabels:
     - preload
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 4044c39308c2439469ed7d13048a6af7
+    m_Address: Locale/zh
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - preload
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 753b2b9da8168cf459be3d0dde60b8f0
+    m_Address: Locale/en
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - preload
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: cf37ec397c89eec41b06e1f871217d76
     m_Address: Lua/notice
     m_ReadOnly: 0

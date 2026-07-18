@@ -11,13 +11,16 @@ namespace Domain.UI.Flow
         public ICommand TrainingCommand { get; }
         public ICommand ReplayCommand { get; }
         public ICommand QuitCommand { get; }
+        public ICommand LanguageCommand { get; }
 
-        public MainMenuViewModel(Action onStart, Action onQuit, Action onReplay, Action onTraining)
+        public MainMenuViewModel(Action onStart, Action onQuit, Action onReplay, Action onTraining,
+            Action onLanguage)
         {
             StartCommand = new SimpleCommand(onStart);
             QuitCommand = new SimpleCommand(onQuit);
             ReplayCommand = new SimpleCommand(onReplay);
             TrainingCommand = new SimpleCommand(onTraining);
+            LanguageCommand = new SimpleCommand(onLanguage);
         }
     }
 }

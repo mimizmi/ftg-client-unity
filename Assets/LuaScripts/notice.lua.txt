@@ -8,6 +8,11 @@ M.title = "运营公告"
 M.body = "本窗口的显示开关、标题、正文与关闭回调全部来自 notice.lua。\n" ..
          "改这个文件推一次资源更新，不用重新出包。"
 
+-- 双语：英文环境优先取 *_en 字段，缺了回落上面的中文字段（可以只写一种语言）
+M.title_en = "Notice"
+M.body_en = "Title, body and close callback of this window all come from notice.lua.\n" ..
+            "Push an asset update to change it -- no new build required."
+
 function M.on_closed()
     print("[Lua] 公告已关闭——这个回调也是 Lua 的，C# 只负责转发点击")
 end

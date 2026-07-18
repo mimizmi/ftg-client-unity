@@ -13,6 +13,7 @@ namespace Domain.UI.Flow
         [SerializeField] private Button quitButton;
         [SerializeField] private Button replayButton;   // 可选：不摆这个按钮就没有回放入口
         [SerializeField] private Button trainingButton; // 可选：不摆这个按钮就没有训练场入口
+        [SerializeField] private Button languageButton; // 可选：中英切换
 
         private void Awake()
         {
@@ -23,6 +24,8 @@ namespace Domain.UI.Flow
                 replayButton = transform.Find("Replay")?.GetComponent<Button>();
             if (trainingButton == null)
                 trainingButton = transform.Find("Training")?.GetComponent<Button>();
+            if (languageButton == null)
+                languageButton = transform.Find("Language")?.GetComponent<Button>();
         }
 
         public void Bind(MainMenuViewModel vm)
@@ -35,6 +38,8 @@ namespace Domain.UI.Flow
                 set.Bind(replayButton).For(v => v.onClick).To(x => x.ReplayCommand);
             if (trainingButton != null)
                 set.Bind(trainingButton).For(v => v.onClick).To(x => x.TrainingCommand);
+            if (languageButton != null)
+                set.Bind(languageButton).For(v => v.onClick).To(x => x.LanguageCommand);
             set.Build();
         }
 
