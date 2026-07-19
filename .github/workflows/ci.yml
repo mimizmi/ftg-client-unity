@@ -45,3 +45,36 @@ jobs:
         with:
           name: test-results
           path: test-results
+
+  # Go 权威服务器 / 无头模拟（N4-N6）。无需任何机密，配好即绿，与 Unity 作业并行。
+  # 覆盖：跨语言对拍、帧同步、预测回滚、真 UDP 联机、网络健壮性（丢包/抖动/乱序）。
+  # 注意：需把 server/（含 testdata/*.pb 对拍夹具）提交进 git，测试才能装载 Frank 数据。
+  server-tests:
+    name: Server (Go) Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Gofmt (fail if unformatted)
+        run: test -z "$(gofmt -l .)" || { echo '未格式化的文件：'; gofmt -l .; exit 1; }
+
+      - name: Test (race detector)
+        run: go test -race ./...

@@ -4,6 +4,7 @@
     "references": [
         "FTG.Core",
         "FTG.Runtime",
+        "FTG.Net",
         "Unity.Addressables",
         "Unity.Addressables.Editor",
         "Unity.ResourceManager"

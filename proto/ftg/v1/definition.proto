@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package ftg.v1;
+
+option csharp_namespace = "FTG.Net.Proto";
+option go_package = "ftgserver/gen/ftg/v1;ftgv1";
+
+// =============================================================================
+// 角色定义夹具：C# 代码里的 FighterDefinition（招式数值/招式表/搓招指令/移动配置）
+// 序列化后作为跨语言对拍的【静态数据源】——Go 侧只读夹具，不复刻数值，
+// 静态数据零分歧，对拍纯粹验证逐帧逻辑。
+//
+// 对齐 Assets/Domain/Infrastructure/Battle/FighterDefinition.cs 及其引用类型。
+// 【不含】判定框与位移：它们来自 Assets/BoxData/*.json，两端各自装载同一份 JSON
+// （C# BoxDataLoader / Go sim/content），夹具存的是【注入 JSON 前】的纯代码数据。
+//
+// 【字节稳定纪律】防过期守卫按字节比对夹具，故此处禁用 proto map（序列化序不稳定）；
+// reaction_moves 用按 reaction 升序排序的 repeated，导出器负责排序。
+//
+// 【前瞻约束】C# MoveEntry.Condition 是 Func（气槽/血量等条件），夹具带不动 lambda。
+// 将来加条件时必须以数据表达（如 require_meter 字段），不得写成闭包——否则对拍断链。
+// =============================================================================
+
+// 姿态枚举，序数对齐 MoveTable.cs 的 Stance : byte。
+enum Stance {
+  STANCE_STANDING = 0;
+  STANCE_CROUCHING = 1;
+  STANCE_AIRBORNE = 2;
+}
+
+// 搓招指令的一步，对齐 MotionPattern.cs 的 MotionStep。
+// dir_mask: numpad 方向位掩码（bit n = 方向 n，如 前=1<<6）。
+message MotionStepDef {
+  uint32 dir_mask = 1;
+  int32 max_gap = 2;
+  int32 charge_frames = 3;
+}
+
+// 搓招指令识别模式，对齐 MotionPattern.cs 的 MotionPattern。
+message MotionPatternDef {
+  string id = 1;
+  int32 priority = 2;
+  repeated MotionStepDef steps = 3;
+  uint32 trigger_buttons = 4; // ButtonMask 位
+  int32 total_window = 5;
+  bool mirror_by_facing = 6;
+}
+
+// 招式表条目，对齐 MoveTable.cs 的 MoveEntry（Condition 见文件头前瞻约束）。
+message MoveEntryDef {
+  string command_id = 1;
+  uint32 buttons = 2; // ButtonMask 位
+  string move_id = 3;
+  Stance stance = 4;
+  repeated string cancel_from = 5;
+  repeated string feint_from = 6;
+  int32 priority = 7;
+  bool cancel_only = 8;
+}
+
+// 招式帧数据数值，对齐 MoveData.cs 的 MoveData（不含 BoxTracks/RootMotion——JSON 侧数据）。
+message MoveDataDef {
+  string move_id = 1;
+  int32 startup = 2;
+  int32 active = 3;
+  int32 recovery = 4;
+  uint32 attributes = 5; // AttackAttribute 位（ushort）
+  int32 damage = 6;
+  int32 hitstun_frames = 7;
+  int32 hitstop = 8;
+  uint32 reaction = 9; // HitReaction 序数
+  int32 cancel_from = 10;
+  int32 invuln_from = 11;
+  int32 invuln_to = 12;
+  int32 catch_from = 13;
+  int32 catch_to = 14;
+  uint32 catch_mask = 15;
+  string catch_followup_move_id = 16;
+}
+
+// 移动参数，对齐 MovementConfig.cs（全部是招式 Id 引用 + 空中冲刺次数）。
+message MovementConfigDef {
+  string idle_id = 1;
+  string crouch_id = 2;
+  string crouch_enter_id = 3;
+  string crouch_exit_id = 4;
+  string walk_forward_id = 5;
+  string walk_backward_id = 6;
+  string dash_id = 7;
+  string back_dash_id = 8;
+  string run_id = 9;
+  string jump_neutral_id = 10;
+  string jump_forward_id = 11;
+  string jump_backward_id = 12;
+  string air_dash_id = 13;
+  int32 air_dash_count = 14;
+}
+
+// 受击类别 → 受击招式（代替 C# Dictionary；导出器按 reaction 升序写入保证字节稳定）。
+message ReactionMoveDef {
+  uint32 reaction = 1; // HitReaction 序数
+  string move_id = 2;
+}
+
+// 一个角色的完整定义夹具。
+message FighterDefinitionDef {
+  string character_id = 1;
+  repeated MotionPatternDef motions = 2;
+  repeated MoveEntryDef move_entries = 3;
+  repeated MoveDataDef moves = 4;
+  MovementConfigDef movement = 5;
+  repeated ReactionMoveDef reaction_moves = 6;
+}

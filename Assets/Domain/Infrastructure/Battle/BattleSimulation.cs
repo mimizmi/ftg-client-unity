@@ -20,7 +20,7 @@ namespace Domain.Infrastructure.Battle
     {
         public int RoundFrames = 99 * 60;
         /// <summary>开场留白帧数。0 = 无留白（当前默认；接入 Ready/Fight 演出后由 UI 侧配置）。</summary>
-        public int IntroFrames = 0;
+        public int IntroFrames = 60;
         /// <summary>回合结束到下一回合（或比赛结束判定）的定格帧数。</summary>
         public int RoundOverFrames = 120;
         public int RoundsToWin = 2;

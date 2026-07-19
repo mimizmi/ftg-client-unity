@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package ftg.v1;
+
+option csharp_namespace = "FTG.Net.Proto";
+option go_package = "ftgserver/gen/ftg/v1;ftgv1";
+
+import "ftg/v1/combat.proto";
+
+// =============================================================================
+// N6 真网络：UDP 数据报协议。拓扑 = 中继权威（relay-authoritative）：
+// Go 服务器负责撮合、分配座位、下发权威开局头（MatchSetup），并在两客户端之间转发输入；
+// 每个客户端本地跑 N5 的回滚引擎（预测/确认/重模拟）。这样"Go 权威服务器"与"回滚"两不冲突。
+//
+// UDP 会丢包/乱序，故设计两条纪律：
+//   ① 每个输入数据报【冗余】携带最近 W 帧——单帧丢失由下一报文补齐，无需重传。
+//   ② 每帧显式带绝对 frame——收端据此去重并按帧号归位（Transport.Drain 只吐新帧）。
+// 这套报文是 lockstep.Transport 的线上实现所需的唯一契约；proto 是跨语言唯一真源。
+// =============================================================================
+
+// 一帧输入（带绝对帧号），网络传输最小单元。复用 combat.Input 的 direction/held/pressed。
+message NetInput {
+  uint32 frame = 1;
+  Input input = 2;
+}
+
+// 输入数据报：客户端↔服务器每帧一发。冗余携带最近若干帧 + 对已收对端帧的 ack。
+message InputDatagram {
+  uint32 seat = 1;              // 发送方座位（1=P1，2=P2；未分配时 0）
+  repeated NetInput inputs = 2; // 冗余窗口：最近 W 帧，按 frame 升序
+  uint32 ack = 3;               // 本端已连续收到的对端最高帧（供发送端裁剪窗口）
+}
+
+// 握手请求：客户端申请加入一场对局。
+message JoinRequest {
+  string match_id = 1;
+  string character_id = 2;
+  uint32 protocol_version = 3; // 语义等同 MatchSetup.protocol_version：输入语义变了则拒绝
+}
+
+// 握手应答：服务器分配座位并下发【权威】开局头。ready=双方到齐、可以开打。
+message JoinResponse {
+  uint32 seat = 1;      // 分配座位（1 或 2）
+  MatchSetup setup = 2; // 权威开局头（对阵角色 + 规则）
+  bool ready = 3;
+}
+
+// 数据报信封：一个 UDP 包 = 一个 Packet。oneof 区分控制面（握手）与数据面（输入）。
+message Packet {
+  oneof body {
+    JoinRequest join = 1;
+    JoinResponse joined = 2;
+    InputDatagram input = 3;
+  }
+}

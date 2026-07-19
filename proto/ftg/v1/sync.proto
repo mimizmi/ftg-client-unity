@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package ftg.v1;
+
+option csharp_namespace = "FTG.Net.Proto";
+option go_package = "ftgserver/gen/ftg/v1;ftgv1";
+
+import "ftg/v1/combat.proto";
+
+// =============================================================================
+// 跨语言对拍（N4）与回滚同步（N5）用的哈希/校验消息。
+// 对拍流程：同一个 Replay 输入夹具喂给 C# 与 Go 两套确定性模拟，
+// 各自产出 HashLog，逐帧比对——首个分歧帧即定点/浮点或移植 bug 的落点。
+// =============================================================================
+
+// 某一帧的状态哈希。hash 用 fixed64 存 FNV-1a 折叠的 8 字节原值。
+message FrameHash {
+  uint32 frame = 1;
+  fixed64 hash = 2;
+}
+
+// 一整场的逐帧哈希日志。setup 携带开局头，令任一侧可独立复现同一场对局。
+// C# 与 Go 各吐一份 HashLog，diff 即对拍结论。
+message HashLog {
+  MatchSetup setup = 1;
+  repeated FrameHash hashes = 2;
+}

@@ -1,0 +1,130 @@
+syntax = "proto3";
+
+package ftg.v1;
+
+// C# 生成代码落到 FTG.Net.Proto（独立 asmdef，绝不污染纯模拟核心 FTG.Core）。
+option csharp_namespace = "FTG.Net.Proto";
+// Go 模块 ftgserver（server/go.mod）；paths=source_relative 下 proto 在 ftg/v1/，
+// 故导入路径 = ftgserver/gen/ftg/v1，包名 ftgv1。
+option go_package = "ftgserver/gen/ftg/v1;ftgv1";
+
+// =============================================================================
+// FTG 确定性格斗 —— 战斗数据契约（跨语言唯一真源）
+//
+// 设计红线：
+//   1. 这份 .proto 是 C#（客户端）与 Go（权威服务器/对拍无头模拟）的唯一契约源，
+//      两侧都用官方 protoc 生成，任何一侧手改生成码都是 desync 的种子。
+//   2. 定点数 Fix 是 Q16.16 的 int raw（见 Assets/Domain/Infrastructure/FixedPoint/Fix.cs）。
+//      线格式一律用 sfixed32 存 raw——固定 4 字节、无 zigzag 歧义，C# int ↔ Go int32 逐位一致。
+//      绝不在协议里出现 float：float 只存在于客户端两个边界（JSON 装载、表现层渲染）。
+//   3. 枚举序数与 C# byte 枚举【逐一对齐】，适配层因此只是一次整型 cast，不查名字。
+//      改动 C# 枚举顺序 = 改协议 = 必须同步改这里，否则跨语言状态错位。
+// =============================================================================
+
+// -------- 输入 --------
+
+// 一名玩家某一 tick 被模拟【消费】的输入（不是设备原始输入）。
+// 对齐 Assets/Domain/Infrastructure/Replay/ReplayData.cs 的 ReplayInputFrame 单人三元组。
+// direction: numpad 1-9（5=中立）；held/pressed: ButtonMask 位（LP=1,MP=2,HP=4,LK=8,MK=16,HK=32）。
+// Released 不进协议——可由 Held 序列重建；Pressed 必须存（事件锁存含无法从 Held 推导的短按位）。
+message Input {
+  uint32 direction = 1;
+  uint32 held = 2;
+  uint32 pressed = 3;
+}
+
+// 某一帧双方的输入 = 帧同步/回滚的最小传输单元。
+// frame 显式携带：帧同步下允许乱序到达、回滚下需按帧号重放，索引不够用。
+message FrameInputs {
+  uint32 frame = 1;
+  Input p1 = 2;
+  Input p2 = 3;
+}
+
+// -------- 对局配置与开局 --------
+
+// 回合规则。对齐 Assets/Domain/Infrastructure/Battle/BattleSimulation.cs 的 BattleConfig。
+// 回放/对拍必须用录制时的这份配置而非当前场景配置，否则时间线对不上。
+message BattleConfig {
+  int32 round_frames = 1;
+  int32 intro_frames = 2;
+  int32 round_over_frames = 3;
+  int32 rounds_to_win = 4;
+  int32 max_health = 5;
+}
+
+// 一场对局的开局头：对阵角色 + 规则 + 协议版本。
+// protocol_version 语义等同 ReplayData.CurrentVersion：输入语义变了的老档拒载。
+message MatchSetup {
+  string p1_character_id = 1;
+  string p2_character_id = 2;
+  BattleConfig config = 3;
+  uint32 protocol_version = 4;
+}
+
+// -------- 回放（= 对拍输入夹具）--------
+
+// 一场完整对局的 protobuf 序列化：开局头 + 逐帧输入流。
+// 这既是 FTGR 二进制回放的 protobuf 等价物，也是 N4 跨语言对拍的输入夹具——
+// 同一个 Replay 喂给 C# 和 Go 两套确定性模拟，各自吐 HashLog，逐帧比对。
+message Replay {
+  MatchSetup setup = 1;
+  repeated FrameInputs frames = 2;
+}
+
+// -------- 定点数与快照 --------
+
+// Q16.16 定点二维向量。x_raw/y_raw 是 Fix.Raw（int），sfixed32 固定 4 字节存原值。
+// 例：-1.0 → raw = -65536；0.5 → raw = 32768。
+message FixVec2 {
+  sfixed32 x_raw = 1;
+  sfixed32 y_raw = 2;
+}
+
+// 角色状态枚举，序数对齐 FighterState.cs 的 FighterStatus : byte。
+enum FighterStatus {
+  FIGHTER_STATUS_NEUTRAL = 0;
+  FIGHTER_STATUS_ATTACKING = 1;
+  FIGHTER_STATUS_COUNTER_STANCE = 2;
+  FIGHTER_STATUS_HITSTUN = 3;
+  FIGHTER_STATUS_BLOCKSTUN = 4;
+}
+
+// 移动状态枚举，序数对齐 MovementConfig.cs 的 MovementState : byte。
+enum MovementState {
+  MOVEMENT_STATE_IDLE = 0;
+  MOVEMENT_STATE_CROUCH_ENTER = 1;
+  MOVEMENT_STATE_CROUCH = 2;
+  MOVEMENT_STATE_CROUCH_EXIT = 3;
+  MOVEMENT_STATE_WALK_FORWARD = 4;
+  MOVEMENT_STATE_WALK_BACKWARD = 5;
+  MOVEMENT_STATE_DASH = 6;
+  MOVEMENT_STATE_RUN = 7;
+  MOVEMENT_STATE_BACK_DASH = 8;
+  MOVEMENT_STATE_JUMPING = 9;
+}
+
+// 单角色确定性状态快照。字段集 = 测试 HashFighter 哈希的确定性字段全集
+// （见 Assets/Tests/EditMode/BattleSimulationTests.cs）。这是回滚的存档单元，
+// 也是对拍分歧时的可诊断状态（哈希对不上时逐字段 diff 定位）。
+// current_move_id 为空串表示 C# 侧 null（无当前招式）。
+message FighterSnapshot {
+  FixVec2 position = 1;
+  int32 health = 2;
+  FighterStatus status = 3;
+  int32 move_frame = 4;
+  int32 stun_remaining = 5;
+  MovementState movement_state = 6;
+  int32 motion_frame = 7;
+  bool facing_right = 8;
+  string current_move_id = 9;
+}
+
+// 某一帧的整局快照 + 该帧状态哈希。state_hash 是确定性字段的 FNV-1a 折叠
+// （算法与测试内联哈希一致），fixed64 存 8 字节原值。
+message BattleSnapshot {
+  uint32 frame = 1;
+  FighterSnapshot p1 = 2;
+  FighterSnapshot p2 = 3;
+  fixed64 state_hash = 4;
+}

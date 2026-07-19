@@ -3,6 +3,7 @@
     "rootNamespace": "FTG.Tests",
     "references": [
         "FTG.Core",
+        "FTG.Net",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
@@ -13,7 +14,8 @@
     "allowUnsafeCode": false,
     "overrideReferences": true,
     "precompiledReferences": [
-        "nunit.framework.dll"
+        "nunit.framework.dll",
+        "Google.Protobuf.dll"
     ],
     "autoReferenced": false,
     "defineConstraints": [

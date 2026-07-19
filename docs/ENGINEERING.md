@@ -219,5 +219,7 @@ clip）在 FighterView 的 **Clip Aliases** 表里配映射。
 
 1. **伤害递减（damage scaling）**——连段每下全额伤害会让游戏瞬间失衡
 2. **受击姿态细分**——站立/蹲姿/浮空/倒地各档受击
-3. **定点数迁移**——上 Go 服务器前必须做（float 跨语言不保证逐位一致）
+3. ~~**定点数迁移**——上 Go 服务器前必须做（float 跨语言不保证逐位一致）~~ ✅
+   已完成（N1 Q16.16 `Fix`/`FixVec2` + N2 模拟核心整体换型）。网络阶段进展见
+   [NETWORKING.md](NETWORKING.md)（N3 protobuf 协议进行中 → N4 Go 对拍 → N5 回滚）。
 4. 气槽 / 超必杀 / 飞行道具；训练模式 + 帧数据工具；Timeline 演出
