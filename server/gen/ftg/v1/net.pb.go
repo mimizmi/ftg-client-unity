@@ -141,6 +141,7 @@ type JoinRequest struct {
 	MatchId         string                 `protobuf:"bytes,1,opt,name=match_id,json=matchId,proto3" json:"match_id,omitempty"`
 	CharacterId     string                 `protobuf:"bytes,2,opt,name=character_id,json=characterId,proto3" json:"character_id,omitempty"`
 	ProtocolVersion uint32                 `protobuf:"varint,3,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"` // 语义等同 MatchSetup.protocol_version：输入语义变了则拒绝
+	ClientId        string                 `protobuf:"bytes,4,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`                       // 客户端稳定身份（一次生成、跨重连不变）：服务器据此认人，
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -194,6 +195,13 @@ func (x *JoinRequest) GetProtocolVersion() uint32 {
 		return x.ProtocolVersion
 	}
 	return 0
+}
+
+func (x *JoinRequest) GetClientId() string {
+	if x != nil {
+		return x.ClientId
+	}
+	return ""
 }
 
 // 握手应答：服务器分配座位并下发【权威】开局头。ready=双方到齐、可以开打。
@@ -367,11 +375,12 @@ const file_ftg_v1_net_proto_rawDesc = "" +
 	"\rInputDatagram\x12\x12\n" +
 	"\x04seat\x18\x01 \x01(\rR\x04seat\x12(\n" +
 	"\x06inputs\x18\x02 \x03(\v2\x10.ftg.v1.NetInputR\x06inputs\x12\x10\n" +
-	"\x03ack\x18\x03 \x01(\rR\x03ack\"v\n" +
+	"\x03ack\x18\x03 \x01(\rR\x03ack\"\x93\x01\n" +
 	"\vJoinRequest\x12\x19\n" +
 	"\bmatch_id\x18\x01 \x01(\tR\amatchId\x12!\n" +
 	"\fcharacter_id\x18\x02 \x01(\tR\vcharacterId\x12)\n" +
-	"\x10protocol_version\x18\x03 \x01(\rR\x0fprotocolVersion\"b\n" +
+	"\x10protocol_version\x18\x03 \x01(\rR\x0fprotocolVersion\x12\x1b\n" +
+	"\tclient_id\x18\x04 \x01(\tR\bclientId\"b\n" +
 	"\fJoinResponse\x12\x12\n" +
 	"\x04seat\x18\x01 \x01(\rR\x04seat\x12(\n" +
 	"\x05setup\x18\x02 \x01(\v2\x12.ftg.v1.MatchSetupR\x05setup\x12\x14\n" +

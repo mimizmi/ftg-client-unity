@@ -36,6 +36,8 @@ message JoinRequest {
   string match_id = 1;
   string character_id = 2;
   uint32 protocol_version = 3; // 语义等同 MatchSetup.protocol_version：输入语义变了则拒绝
+  string client_id = 4;        // 客户端稳定身份（一次生成、跨重连不变）：服务器据此认人，
+                               // 换 socket / NAT 重绑后 re-Join 能重新映射回原座位（断线重连基石）
 }
 
 // 握手应答：服务器分配座位并下发【权威】开局头。ready=双方到齐、可以开打。

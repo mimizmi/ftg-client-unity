@@ -20,6 +20,13 @@ type NetConditions struct {
 type datagram struct {
 	arriveAt int
 	window   []InputPacket
+	ack      int
+}
+
+// deliveredWindow 是一个已到达的数据报载荷：一段冗余窗口 + 发送端的 ack。
+type deliveredWindow struct {
+	window []InputPacket
+	ack    int
 }
 
 // lossyPipe 是单向、带丢包/抖动的数据报管道（携带冗余窗口，非单帧）。Step 推进一格逻辑时间。
@@ -28,19 +35,21 @@ type lossyPipe struct {
 	rng      *rand.Rand
 	clock    int
 	inFlight []datagram
-	ready    [][]InputPacket
+	ready    []deliveredWindow
 	// 统计
-	sent    int
-	dropped int
+	sent       int // 发出的数据报数
+	dropped    int // 丢弃的数据报数
+	framesSent int // 累计发出的帧数（冗余窗口长度之和）——衡量带宽，ack 裁剪后应远小于 数据报数×W
 }
 
 func newLossyPipe(cond NetConditions, seed int64) *lossyPipe {
 	return &lossyPipe{cond: cond, rng: rand.New(rand.NewSource(seed))}
 }
 
-// send 按丢包率决定丢弃，否则按 Latency+抖动排入在途队列。
-func (p *lossyPipe) send(win []InputPacket) {
+// send 按丢包率决定丢弃，否则按 Latency+抖动排入在途队列。ack 随窗口一起过线。
+func (p *lossyPipe) send(win []InputPacket, ack int) {
 	p.sent++
+	p.framesSent += len(win)
 	if p.cond.LossRate > 0 && p.rng.Float64() < p.cond.LossRate {
 		p.dropped++
 		return // 整个数据报丢失（冗余窗口令被丢帧由后续报文补回）
@@ -49,7 +58,7 @@ func (p *lossyPipe) send(win []InputPacket) {
 	if p.cond.Jitter > 0 {
 		delay += p.rng.Intn(p.cond.Jitter + 1)
 	}
-	p.inFlight = append(p.inFlight, datagram{arriveAt: p.clock + delay, window: win})
+	p.inFlight = append(p.inFlight, datagram{arriveAt: p.clock + delay, window: win, ack: ack})
 }
 
 // Step 推进一格逻辑时间，把到期数据报转入可读队列（抖动会令后发先到=乱序）。
@@ -58,7 +67,7 @@ func (p *lossyPipe) Step() {
 	kept := p.inFlight[:0]
 	for _, d := range p.inFlight {
 		if d.arriveAt <= p.clock {
-			p.ready = append(p.ready, d.window)
+			p.ready = append(p.ready, deliveredWindow{window: d.window, ack: d.ack})
 		} else {
 			kept = append(kept, d)
 		}
@@ -66,7 +75,7 @@ func (p *lossyPipe) Step() {
 	p.inFlight = kept
 }
 
-func (p *lossyPipe) drain() [][]InputPacket {
+func (p *lossyPipe) drain() []deliveredWindow {
 	out := p.ready
 	p.ready = nil
 	return out
@@ -83,22 +92,27 @@ type RedundantChannel struct {
 
 var _ Transport = (*RedundantChannel)(nil)
 
-// Send 记录本地输入并把冗余窗口发进出向管道。
-func (c *RedundantChannel) Send(p InputPacket) { c.out.send(c.w.Local(p)) }
+// Send 记录本地输入并把冗余窗口（已按对端 ack 裁剪）+ 本端 ack 发进出向管道。
+func (c *RedundantChannel) Send(p InputPacket) { c.out.send(c.w.Local(p), c.w.Ack()) }
 
-// Drain 收取入向管道所有到达的数据报，去重后返回新远端帧。
+// Drain 收取入向管道所有到达的数据报：学习对端 ack（裁剪本端重发），去重后返回新远端帧。
 func (c *RedundantChannel) Drain() []InputPacket {
-	for _, win := range c.in.drain() {
-		c.pending = append(c.pending, c.w.Remote(win)...)
+	for _, d := range c.in.drain() {
+		c.w.RecordPeerAck(d.ack)
+		c.pending = append(c.pending, c.w.Remote(d.window)...)
 	}
 	out := c.pending
 	c.pending = nil
 	return out
 }
 
+// Stats 返回本信道的连接质量快照（RTT/新鲜度/断线信号）。
+func (c *RedundantChannel) Stats() ConnStats { return c.w.Stats() }
+
 // RobustMatch 是"恶劣链路下的两端回滚对局"夹具：两 RollbackPeer 经带丢包/抖动的冗余信道交换输入。
 type RobustMatch struct {
 	A, B       *RollbackPeer
+	chA, chB   *RedundantChannel
 	aToB, bToA *lossyPipe
 }
 
@@ -117,8 +131,12 @@ func NewRobustMatch(cfg MatchConfig, cond NetConditions, windowSize int) *Robust
 	bCfg := base
 	bCfg.Transport, bCfg.Script, bCfg.LocalIsP1 = chB, cfg.P2Script, false
 
-	return &RobustMatch{A: NewRollbackPeer(aCfg), B: NewRollbackPeer(bCfg), aToB: aToB, bToA: bToA}
+	return &RobustMatch{A: NewRollbackPeer(aCfg), B: NewRollbackPeer(bCfg), chA: chA, chB: chB, aToB: aToB, bToA: bToA}
 }
+
+// StatsA / StatsB 返回两端各自的连接质量快照（供测试与展示层）。
+func (m *RobustMatch) StatsA() ConnStats { return m.chA.Stats() }
+func (m *RobustMatch) StatsB() ConnStats { return m.chB.Stats() }
 
 // Step 走一逻辑步：两端各 Advance，再让两条链路各推进一格时间。
 func (m *RobustMatch) Step() {
@@ -145,4 +163,9 @@ func (m *RobustMatch) RunFrames(target, maxSteps int) error {
 // LossStats 返回两向链路的发送/丢弃计数（供测试断言确有丢包发生）。
 func (m *RobustMatch) LossStats() (aSent, aDropped, bSent, bDropped int) {
 	return m.aToB.sent, m.aToB.dropped, m.bToA.sent, m.bToA.dropped
+}
+
+// FramesSent 返回两向累计发出的帧数（冗余窗口长度之和）——衡量带宽。ack 裁剪生效后应远小于 数据报数×W。
+func (m *RobustMatch) FramesSent() (aToB, bToA int) {
+	return m.aToB.framesSent, m.bToA.framesSent
 }

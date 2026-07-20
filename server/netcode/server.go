@@ -17,10 +17,17 @@ type RelayServer struct {
 	conn  *net.UDPConn
 	setup *ftgv1.MatchSetup
 
-	mu       sync.Mutex
-	seatAddr [3]*net.UDPAddr // 下标 1/2 = 座位；0 不用
-	addrSeat map[string]int  // addr.String() → 座位
-	log      func(format string, args ...any)
+	mu         sync.Mutex
+	players    [3]*relayPlayer // 下标 1/2 = 座位；0 不用
+	clientSeat map[string]int  // client_id → 座位（按稳定身份认人，支持重连）
+	addrSeat   map[string]int  // addr.String() → 座位（输入转发按当前地址路由）
+	log        func(format string, args ...any)
+}
+
+// relayPlayer 是服务器记的一名玩家：稳定身份 + 当前地址。重连即更新 addr。
+type relayPlayer struct {
+	clientID string
+	addr     *net.UDPAddr
 }
 
 // NewRelayServer 用已监听的 UDP conn 与权威开局头构造服务器。log 可为 nil。
@@ -29,10 +36,11 @@ func NewRelayServer(conn *net.UDPConn, setup *ftgv1.MatchSetup, log func(string,
 		log = func(string, ...any) {}
 	}
 	return &RelayServer{
-		conn:     conn,
-		setup:    setup,
-		addrSeat: make(map[string]int),
-		log:      log,
+		conn:       conn,
+		setup:      setup,
+		clientSeat: make(map[string]int),
+		addrSeat:   make(map[string]int),
+		log:        log,
 	}
 }
 
@@ -57,7 +65,7 @@ func (s *RelayServer) Serve() {
 		}
 		switch body := pkt.GetBody().(type) {
 		case *ftgv1.Packet_Join:
-			s.handleJoin(addr)
+			s.handleJoin(addr, body.Join.GetClientId())
 		case *ftgv1.Packet_Input:
 			s.handleInput(addr, body.Input)
 		default:
@@ -66,27 +74,43 @@ func (s *RelayServer) Serve() {
 	}
 }
 
-// handleJoin 分配/复用座位并回执权威开局头。ready = 双方到齐。
-func (s *RelayServer) handleJoin(addr *net.UDPAddr) {
+// handleJoin 按 client_id 分配/复用座位并回执权威开局头。已知 client_id 换了地址 = 重连，
+// 更新其地址即可（座位不变）。ready = 双方到齐。client_id 为空时退化用地址串当身份（兼容）。
+func (s *RelayServer) handleJoin(addr *net.UDPAddr, clientID string) {
+	if clientID == "" {
+		clientID = addr.String()
+	}
 	s.mu.Lock()
-	seat, known := s.addrSeat[addr.String()]
-	if !known {
-		switch {
-		case s.seatAddr[1] == nil:
-			seat = 1
-		case s.seatAddr[2] == nil:
-			seat = 2
-		default:
-			s.mu.Unlock()
-			s.log("对局已满，拒绝 %s", addr)
-			return
+	seat, known := s.clientSeat[clientID]
+	switch {
+	case known:
+		// 重连：地址变了就重新映射（旧地址路由作废，输入改发新地址）。
+		if p := s.players[seat]; p.addr.String() != addr.String() {
+			delete(s.addrSeat, p.addr.String())
+			p.addr = addr
+			s.addrSeat[addr.String()] = seat
+			s.log("玩家重连：座位 %d ← 新地址 %s", seat, addr)
 		}
-		s.seatAddr[seat] = addr
+	case s.players[1] == nil:
+		seat = 1
+	case s.players[2] == nil:
+		seat = 2
+	default:
+		s.mu.Unlock()
+		s.log("对局已满，拒绝 %s", addr)
+		return
+	}
+	if !known {
+		s.players[seat] = &relayPlayer{clientID: clientID, addr: addr}
+		s.clientSeat[clientID] = seat
 		s.addrSeat[addr.String()] = seat
 		s.log("玩家加入：座位 %d ← %s", seat, addr)
 	}
-	ready := s.seatAddr[1] != nil && s.seatAddr[2] != nil
-	other := s.seatAddr[3-seat]
+	ready := s.players[1] != nil && s.players[2] != nil
+	var other *net.UDPAddr
+	if op := s.players[3-seat]; op != nil {
+		other = op.addr
+	}
 	s.mu.Unlock()
 
 	s.send(addr, &ftgv1.Packet{Body: &ftgv1.Packet_Joined{Joined: &ftgv1.JoinResponse{
@@ -106,7 +130,9 @@ func (s *RelayServer) handleInput(addr *net.UDPAddr, dg *ftgv1.InputDatagram) {
 	seat, known := s.addrSeat[addr.String()]
 	var other *net.UDPAddr
 	if known {
-		other = s.seatAddr[3-seat]
+		if op := s.players[3-seat]; op != nil {
+			other = op.addr
+		}
 	}
 	s.mu.Unlock()
 	if !known || other == nil {

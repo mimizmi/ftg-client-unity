@@ -188,3 +188,134 @@ func assertTrace(t *testing.T, who string, got, ref []uint64, n int) {
 		}
 	}
 }
+
+func TestClassifyState(t *testing.T) {
+	const warn, dead = 30, 180
+	cases := []struct {
+		ready bool
+		stale int
+		want  ConnectionState
+	}{
+		{false, 0, StateConnecting},
+		{false, 999, StateConnecting}, // 未就绪永远算连接中
+		{true, 0, StateConnected},
+		{true, 30, StateConnected}, // ==warn 仍算已连接（> 才断流）
+		{true, 31, StateStalled},
+		{true, 180, StateStalled},
+		{true, 181, StateDisconnected},
+	}
+	for _, c := range cases {
+		if got := classifyState(c.ready, c.stale, warn, dead); got != c.want {
+			t.Errorf("classifyState(ready=%v, stale=%d)=%v，期望 %v", c.ready, c.stale, got, c.want)
+		}
+	}
+}
+
+// TestServer_ReconnectRemapsAddress：客户端凭稳定 client_id 从【新地址】重连，服务器应保持其座位
+// 不变、把输入转发改路由到新地址（旧地址不再收到）——断线重连的服务器侧核心。
+func TestServer_ReconnectRemapsAddress(t *testing.T) {
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	if err != nil {
+		t.Fatalf("监听失败：%v", err)
+	}
+	srv := NewRelayServer(conn, matchSetup(), nil)
+	go srv.Serve()
+	defer srv.Close()
+	srvAddr, _ := net.ResolveUDPAddr("udp", srv.Addr().String())
+
+	dial := func() *net.UDPConn {
+		c, err := net.DialUDP("udp", nil, srvAddr)
+		if err != nil {
+			t.Fatalf("拨号失败：%v", err)
+		}
+		return c
+	}
+	join := func(c *net.UDPConn, cid string) int {
+		writePkt(t, c, &ftgv1.Packet{Body: &ftgv1.Packet_Join{Join: &ftgv1.JoinRequest{
+			ClientId: cid, CharacterId: "Frank", ProtocolVersion: 1,
+		}}})
+		p := readPkt(t, c, time.Second)
+		return int(p.GetJoined().GetSeat())
+	}
+
+	a := dial()
+	defer a.Close()
+	b := dial()
+	defer b.Close()
+	seatA := join(a, "A")
+	seatB := join(b, "B")
+	if seatA == seatB {
+		t.Fatalf("座位重复：A=%d B=%d", seatA, seatB)
+	}
+
+	// 重连前：B 的输入应转发到 A（旧 socket）。
+	sendInput(t, b, 1)
+	if !expectInput(a, time.Second) {
+		t.Fatal("重连前 A 应收到 B 的输入")
+	}
+
+	// A 从【新 socket】以同一 client_id 重连：座位不变。
+	a2 := dial()
+	defer a2.Close()
+	if s := join(a2, "A"); s != seatA {
+		t.Fatalf("重连后座位变了：%d → %d", seatA, s)
+	}
+
+	// 重连后：B 的输入应改路由到新 socket，旧 socket 不再收到。
+	sendInput(t, b, 2)
+	if !expectInput(a2, time.Second) {
+		t.Fatal("重连后 A 的新 socket 应收到 B 的输入")
+	}
+	if expectInput(a, 200*time.Millisecond) {
+		t.Fatal("重连后旧 socket 不应再收到输入")
+	}
+}
+
+func writePkt(t *testing.T, c *net.UDPConn, pkt *ftgv1.Packet) {
+	t.Helper()
+	b, err := marshalPacket(pkt)
+	if err != nil {
+		t.Fatalf("序列化失败：%v", err)
+	}
+	if _, err := c.Write(b); err != nil {
+		t.Fatalf("发送失败：%v", err)
+	}
+}
+
+func readPkt(t *testing.T, c *net.UDPConn, d time.Duration) *ftgv1.Packet {
+	t.Helper()
+	_ = c.SetReadDeadline(time.Now().Add(d))
+	buf := make([]byte, 4096)
+	n, err := c.Read(buf)
+	if err != nil {
+		t.Fatalf("读取失败：%v", err)
+	}
+	p, err := unmarshalPacket(buf[:n])
+	if err != nil {
+		t.Fatalf("解析失败：%v", err)
+	}
+	return p
+}
+
+func sendInput(t *testing.T, c *net.UDPConn, frame int) {
+	writePkt(t, c, &ftgv1.Packet{Body: &ftgv1.Packet_Input{Input: &ftgv1.InputDatagram{
+		Inputs: []*ftgv1.NetInput{{Frame: uint32(frame), Input: &ftgv1.Input{Direction: 5}}},
+	}}})
+}
+
+// expectInput 在 d 内读到一个 Input 包即返回 true；期间跳过握手应答等非输入包。
+func expectInput(c *net.UDPConn, d time.Duration) bool {
+	deadline := time.Now().Add(d)
+	buf := make([]byte, 4096)
+	for time.Now().Before(deadline) {
+		_ = c.SetReadDeadline(deadline)
+		n, err := c.Read(buf)
+		if err != nil {
+			return false
+		}
+		if p, err := unmarshalPacket(buf[:n]); err == nil && p.GetInput() != nil {
+			return true
+		}
+	}
+	return false
+}

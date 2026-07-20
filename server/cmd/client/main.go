@@ -54,14 +54,19 @@ func main() {
 		Script: scriptForSeat(seat), LocalIsP1: seat == 1,
 	})
 
+	// 依实测 RTT 推荐输入延迟（观测用；实机在开局/局间采用，见 DelayController 注释的确定性纪律）。
+	delayCtl := lockstep.NewDelayController(0, 8)
+
 	// 60Hz 驱动，直到确认帧达到目标。
 	ticker := time.NewTicker(time.Second / 60)
 	defer ticker.Stop()
 	for range ticker.C {
 		peer.Advance()
+		recD := delayCtl.Observe(ct.Stats().RttFrames)
 		if f := peer.ConfirmedFrame(); f%60 == 0 && f > 0 {
-			log.Printf("确认帧 %d（预测头 %d，修正 %d，最大回滚 %d 帧）",
-				f, peer.HeadFrame(), peer.Corrections, peer.MaxRollback)
+			s := ct.Stats()
+			log.Printf("[%s] 确认帧 %d（预测头 %d，修正 %d，最大回滚 %d 帧；RTT≈%d 帧，新鲜度 %d 步，推荐输入延迟 %d 帧）",
+				ct.State(), f, peer.HeadFrame(), peer.Corrections, peer.MaxRollback, s.RttFrames, s.StaleSteps, recD)
 		}
 		if peer.ConfirmedFrame() >= *frames {
 			break

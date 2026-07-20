@@ -74,3 +74,23 @@ func TestRollback_VariousLatencies(t *testing.T) {
 		})
 	}
 }
+
+// 各 D 下 confirmed 轨迹各自等于其 D 的单机参照——输入延迟改变输入落帧、不损确定性。
+// （注：本回滚模型 simFrame=wallTick+D 是"缓冲提前"而非"显示延迟"，故 D 不改变回滚窗口≈L；
+// D 减少可见回滚需客户端把显示帧退到预测头之后，属客户端集成范畴。此处只验 D 不破坏确定性。）
+func TestRollback_InputDelayPreservesDeterminism(t *testing.T) {
+	def := loadFrank(t)
+	const n, l = 100, 4
+	for _, d := range []int{0, 2, 4} {
+		m := NewRollbackMatch(MatchConfig{
+			P1Def: def, P2Def: def, P1Script: p1Script, P2Script: p2Script,
+			InputDelay: d, Latency: l,
+		})
+		if err := m.RunFrames(n); err != nil {
+			t.Fatal(err)
+		}
+		ref := referenceTrace(t, def, n, d)
+		assertTrace(t, "A", m.A.ConfirmedTrace(), ref, n)
+		assertTrace(t, "B", m.B.ConfirmedTrace(), ref, n)
+	}
+}
