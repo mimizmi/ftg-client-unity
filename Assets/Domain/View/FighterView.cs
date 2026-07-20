@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using Domain.Infrastructure.Motion;
 using Domain.Service;
 using Domain.Service.Battle;
@@ -38,20 +39,27 @@ namespace Domain.Infrastructure.Battle
             MirrorScaleX, // 2D 骨骼/精灵：X 负缩放镜像
         }
  
-        private BattleLoop loop;
-        private FighterState fighter;
+        private IPresentationClock clock;
+        private Func<FighterState> fighterProvider;
 
         /// <summary>当前绑定的逻辑侧角色（FX 层按它做 状态 → 视图 的映射）。未绑定时为 null。</summary>
-        public FighterState Fighter => fighter;
+        public FighterState Fighter => fighterProvider?.Invoke();
  
         /// <summary>
         /// 由 BattleBootstrap 在实例化角色后调用，接上逻辑侧。
         /// 绑定前 LateUpdate 静默跳过（角色站在出生点等待开局是正常状态）。
         /// </summary>
         public void Bind(BattleLoop battleLoop, FighterState fighterState)
+            => Bind(battleLoop, () => fighterState);
+
+        /// <summary>
+        /// 在线回滚用：clock 跟随回滚驱动的逻辑帧，fighterSource 每帧返回【当前预测模拟】里的对应角色
+        /// （回滚每帧重建预测，角色对象是临时的，故必须每帧现取而非持固定引用）。
+        /// </summary>
+        public void Bind(IPresentationClock presentationClock, Func<FighterState> fighterSource)
         {
-            loop = battleLoop;
-            fighter = fighterState;
+            clock = presentationClock;
+            fighterProvider = fighterSource;
  
             if (animator == null) animator = GetComponentInChildren<Animator>();
  
@@ -94,22 +102,23 @@ namespace Domain.Infrastructure.Battle
  
         private void LateUpdate()
         {
-            if (fighter == null || loop == null) return;
+            FighterState fighter = fighterProvider?.Invoke();
+            if (fighter == null || clock == null) return;
  
             // ---- 逻辑帧推进检测：记录插值端点，并做一次动画校准 ----
-            if (loop.CurrentFrame != lastSeenFrame)
+            if (clock.CurrentFrame != lastSeenFrame)
             {
-                int elapsed = loop.CurrentFrame - lastSeenFrame;
+                int elapsed = clock.CurrentFrame - lastSeenFrame;
                 // 正常推进 1 帧：旧终点变新起点；卡顿跨了多帧：直接跳，不做穿越插值
                 prevPosition = (elapsed == 1 && lastSeenFrame >= 0) ? currentPosition : ToVector2(fighter.Position);
                 currentPosition = ToVector2(fighter.Position);
-                lastSeenFrame = loop.CurrentFrame;
+                lastSeenFrame = clock.CurrentFrame;
  
                 SyncAnimation(fighter);
             }
  
             // ---- 位置：两个逻辑帧之间按累加器进度插值 ----
-            Vector2 rendered = Vector2.Lerp(prevPosition, currentPosition, loop.InterpolationAlpha);
+            Vector2 rendered = Vector2.Lerp(prevPosition, currentPosition, clock.InterpolationAlpha);
             transform.position = new Vector3(rendered.x, rendered.y, transform.position.z);
  
             // ---- 朝向 ----

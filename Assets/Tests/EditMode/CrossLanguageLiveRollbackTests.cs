@@ -52,6 +52,8 @@ namespace FTG.Tests
         {
             string server = Environment.GetEnvironmentVariable("FTG_SERVER") ?? "127.0.0.1:7777";
             int frames = int.TryParse(Environment.GetEnvironmentVariable("FTG_FRAMES"), out int fv) ? fv : 180;
+            // FTG_DELAY>0：人工延迟收远端输入 K 帧，让回滚在 localhost 上也真的触发（仍收敛同哈希）。
+            int delay = int.TryParse(Environment.GetEnvironmentVariable("FTG_DELAY"), out int dv) ? dv : 0;
 
             int split = server.LastIndexOf(':');
             string host = server.Substring(0, split);
@@ -74,7 +76,8 @@ namespace FTG.Tests
                 BattleConfig config = ReplayProtoCodec.FromProto(ct.Setup.Config);
 
                 BattleSimulation sim = BuildNetworkSim(config);
-                var driver = new RollbackDriver(sim, ct,
+                ITransport transport = delay > 0 ? new DelayingTransport(ct, delay) : (ITransport)ct;
+                var driver = new RollbackDriver(sim, transport,
                     w => { var (d, h) = ScriptForSeat(seat, w); return new LocalInput(d, h); },
                     localIsP1: seat == 1);
 
@@ -97,6 +100,12 @@ namespace FTG.Tests
                 for (int i = 0; i < frames; i++)
                     Assert.That(live[i], Is.EqualTo(reference[i]),
                         $"帧 {i + 1} 哈希与单机参照分歧（跨语言 desync）：live={live[i]:x16} ref={reference[i]:x16}");
+
+                // 注入延迟后，回滚必须真的触发（预测窗口打开）——且上面的哈希仍逐位一致，
+                // 这正是回滚的核心承诺：只改「何时看到正确结果」，不改「最终正确结果」。
+                if (delay > 0)
+                    Assert.That(driver.MaxRollback, Is.GreaterThan(0),
+                        $"注入 {delay} 帧延迟后回滚应真的触发，但 MaxRollback=0");
 
                 UnityEngine.Debug.Log(
                     $"[跨语言实机对拍] 本端座位 P{seat}，{frames} 帧 confirmed 逐位等于单机参照；" +

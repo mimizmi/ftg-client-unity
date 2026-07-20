@@ -11,6 +11,7 @@ namespace Domain.UI.Flow
         [Header("留空 = 按约定路径自动查找")]
         [SerializeField] private Button startButton;
         [SerializeField] private Button quitButton;
+        [SerializeField] private Button onlineButton;    // 可选：不摆这个按钮就没有在线对战入口
         [SerializeField] private Button replayButton;   // 可选：不摆这个按钮就没有回放入口
         [SerializeField] private Button trainingButton; // 可选：不摆这个按钮就没有训练场入口
         [SerializeField] private Button languageButton; // 可选：中英切换
@@ -19,7 +20,9 @@ namespace Domain.UI.Flow
         {
             startButton = startButton != null ? startButton : Find<Button>("Start");
             quitButton = quitButton != null ? quitButton : Find<Button>("Quit");
-            // Replay/Training 按钮是可选项：软查找，缺失不算错误
+            // Online/Replay/Training 按钮是可选项：软查找，缺失不算错误
+            if (onlineButton == null)
+                onlineButton = transform.Find("Online")?.GetComponent<Button>();
             if (replayButton == null)
                 replayButton = transform.Find("Replay")?.GetComponent<Button>();
             if (trainingButton == null)
@@ -34,6 +37,8 @@ namespace Domain.UI.Flow
                 this.CreateBindingSet<MainMenuView, MainMenuViewModel>(vm);
             set.Bind(startButton).For(v => v.onClick).To(x => x.StartCommand);
             set.Bind(quitButton).For(v => v.onClick).To(x => x.QuitCommand);
+            if (onlineButton != null)
+                set.Bind(onlineButton).For(v => v.onClick).To(x => x.OnlineCommand);
             if (replayButton != null)
                 set.Bind(replayButton).For(v => v.onClick).To(x => x.ReplayCommand);
             if (trainingButton != null)

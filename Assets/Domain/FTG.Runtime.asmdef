@@ -3,6 +3,7 @@
     "rootNamespace": "Domain",
     "references": [
         "FTG.Core",
+        "FTG.Net",
         "Unity.InputSystem",
         "Loxodon.Framework",
         "Loxodon.Log",

@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using Cysharp.Threading.Tasks;
+using Domain.Infrastructure.Battle;
 using Domain.Infrastructure.Input;
 using Domain.Infrastructure.Replay;
 using Domain.Service.App;
@@ -28,6 +29,7 @@ namespace Domain.UI.Flow
         [SerializeField] private UIManager ui;
         [SerializeField] private BattleBootstrap bootstrap;
         [SerializeField] private BattleLoop loop;
+        [SerializeField] private NetworkBattleBootstrap netBootstrap; // 可选：在线对战组合根（不拖 = 无在线入口）
         [SerializeField] private HotUpdater hotUpdater; // 可选：不拖 = 跳过启动热更检查
 
         [Header("可选角色（数据驱动，随角色包扩充）")]
@@ -90,7 +92,7 @@ namespace Domain.UI.Flow
             menuScreen = view;
             view.Bind(new MainMenuViewModel(
                 onStart: ShowCharacterSelect, onQuit: Quit, onReplay: WatchLatestReplay,
-                onTraining: ShowTrainingSelect, onLanguage: ToggleLanguage));
+                onTraining: ShowTrainingSelect, onLanguage: ToggleLanguage, onOnline: StartOnlineBattle));
             TryShowLuaNotice();
         }
 
@@ -173,7 +175,7 @@ namespace Domain.UI.Flow
             recorder?.Stop();
             recorder = new ReplayRecorder(loop.Simulation, p1, p2);
 
-            OpenHud();
+            OpenHud(loop.Simulation);
         }
 
         // ---- 训练场 ----
@@ -188,12 +190,19 @@ namespace Domain.UI.Flow
             if (!ok) { pendingTraining = false; ShowMenu(); return; }
 
             trainingActive = true;
-            OpenHud();
+            OpenHud(loop.Simulation);
             Debug.Log("[Training] 训练场开始：F1 站桩 / F2 蹲姿 / F3 后走 / F4 简单CPU，Esc 退出");
         }
 
         private void Update()
         {
+            if (onlineActive)
+            {
+                var okb = UnityEngine.InputSystem.Keyboard.current;
+                if (okb != null && okb.escapeKey.wasPressedThisFrame) ExitOnline();
+                return;
+            }
+
             if (!trainingActive) return;
             var kb = UnityEngine.InputSystem.Keyboard.current;
             if (kb == null) return;
@@ -221,14 +230,84 @@ namespace Domain.UI.Flow
             ShowMenu();
         }
 
+        // ---- 在线对战（回滚 + Go 权威服务器）----
+
+        private bool onlineActive;
+
+        private async void StartOnlineBattle()
+        {
+            if (netBootstrap == null)
+            {
+                Debug.LogError("[GameFlow] 未拖入 NetworkBattleBootstrap：主菜单的在线入口无法工作。", this);
+                ShowMenu();
+                return;
+            }
+
+            CloseScreen(ref menuScreen);
+            ShowLoading().Forget();
+            bool ok = await netBootstrap.StartOnlineMatch();
+            HideLoading();
+            if (!ok) { ShowMenu(); return; } // 握手超时/加载失败：错误已打日志，退回菜单
+
+            onlineActive = true;
+            netBootstrap.Simulation.MatchEnded += OnOnlineMatchEnded;
+            OpenHud(netBootstrap.Simulation); // HUD 绑【确认】模拟（身份稳定，仅落后回滚窗口若干帧）
+            Debug.Log("[GameFlow] 在线对战开始：Esc 退出。");
+        }
+
+        private async void OnOnlineMatchEnded(int winner)
+        {
+            StopOnline();
+
+            ResultView view = await ui.Open<ResultView>(resultKey);
+            if (view == null) return;
+            resultScreen = view;
+            string winnerText = winner == 0
+                ? Localization.Current.GetText("result.draw", "DRAW")
+                : Localization.Current.GetFormattedText("result.wins", winner);
+            view.Bind(new ResultViewModel(winnerText, onRematch: RematchOnline, onMenu: ExitOnlineToMenu));
+        }
+
+        private void RematchOnline()
+        {
+            CloseScreen(ref resultScreen);
+            CloseScreen(ref hudScreen); // HUD 绑着旧确认模拟，随旧局一起关
+            StartOnlineBattle();        // StartOnlineMatch 内部先 StopMatch 旧局
+        }
+
+        private void ExitOnlineToMenu()
+        {
+            CloseScreen(ref resultScreen);
+            CloseScreen(ref hudScreen);
+            StopOnline();
+            ShowMenu();
+        }
+
+        // Esc 退出在线对战：关 HUD、停局、回菜单。
+        private void ExitOnline()
+        {
+            CloseScreen(ref hudScreen);
+            StopOnline();
+            ShowMenu();
+        }
+
+        private void StopOnline()
+        {
+            onlineActive = false;
+            if (netBootstrap == null) return;
+            if (netBootstrap.Simulation != null)
+                netBootstrap.Simulation.MatchEnded -= OnOnlineMatchEnded;
+            netBootstrap.StopMatch();
+        }
+
         // ---- 战斗内界面 ----
 
-        private async void OpenHud()
+        private async void OpenHud(BattleSimulation sim)
         {
             BattleHudView view = await ui.Open<BattleHudView>(hudKey);
             if (view == null) return;
             hudScreen = view;
-            view.Bind(new BattleHudViewModel(loop.Simulation));
+            view.Bind(new BattleHudViewModel(sim));
         }
 
         private async void OnMatchEnded(int winner)
@@ -271,7 +350,7 @@ namespace Domain.UI.Flow
             replayEndFrame = data.FrameCount + 60; // 播完留 1 秒余韵再收场
             loop.Simulation.TickFinished += OnReplayTick;
 
-            OpenHud();
+            OpenHud(loop.Simulation);
         }
 
         private void OnReplayTick(int frame)

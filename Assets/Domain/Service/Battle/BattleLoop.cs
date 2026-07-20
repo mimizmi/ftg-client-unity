@@ -10,7 +10,7 @@ namespace Domain.Service.Battle
     /// 并把模拟事件桥接到表现层（HitEvent → Messenger）。
     /// 模拟本体（状态 + 帧推进）在 BattleSimulation（FTG.Core）——测试与回滚直接驱动那边。
     /// </summary>
-    public class BattleLoop : MonoBehaviour
+    public class BattleLoop : MonoBehaviour, IPresentationClock
     {
         public const int TickRate = 60;
         private const float TickDelta = 1f / TickRate;
