@@ -76,7 +76,7 @@ namespace FTG.Tests
         [Test]
         public void KO_AwardsWin_ThenResetsNextRound()
         {
-            var config = new BattleConfig { RoundOverFrames = 10 };
+            var config = new BattleConfig { IntroFrames = 0, RoundOverFrames = 10 };
             BattleSimulation sim = Build(WalkThenMash, WalkThenNeutral, config);
             sim.P2.Health = 30; // 一发轻拳（30 伤害）即 KO
 
@@ -127,7 +127,7 @@ namespace FTG.Tests
         [Test]
         public void Timeout_EqualHealth_DrawScoresBoth()
         {
-            var config = new BattleConfig { RoundFrames = 10, RoundOverFrames = 10 };
+            var config = new BattleConfig { IntroFrames = 0, RoundFrames = 10, RoundOverFrames = 10 };
             BattleSimulation sim = Build(Neutral, Neutral, config);
 
             RoundResult? result = null;

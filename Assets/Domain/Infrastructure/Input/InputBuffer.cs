@@ -43,5 +43,15 @@
             head = -1;
             count = 0;
         }
+
+        /// <summary>深拷贝缓冲（回滚存档）：帧数组与读写游标整体复制，与原缓冲独立演进。</summary>
+        public InputBuffer Clone()
+        {
+            var copy = new InputBuffer(frames.Length);
+            System.Array.Copy(frames, copy.frames, frames.Length);
+            copy.head = head;
+            copy.count = count;
+            return copy;
+        }
     }
 }

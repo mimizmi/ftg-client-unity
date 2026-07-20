@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Domain.Infrastructure.FixedPoint;
+using Domain.Infrastructure.Input;
 using UnityEngine;
 
 namespace Domain.Infrastructure.Battle
@@ -56,8 +57,8 @@ namespace Domain.Infrastructure.Battle
     /// </summary>
     public sealed class BattleSimulation
     {
-        public FighterState P1 { get; }
-        public FighterState P2 { get; }
+        public FighterState P1 { get; private set; }
+        public FighterState P2 { get; private set; }
         public CollisionResolver Resolver { get; }
 
         /// <summary>推挡解算：防重叠 + 版边约束。</summary>
@@ -103,7 +104,7 @@ namespace Domain.Infrastructure.Battle
         /// </summary>
         public event Action<int> TickFinished;
 
-        private readonly List<HitEvent> hitEvents = new List<HitEvent>(4);
+        private List<HitEvent> hitEvents = new List<HitEvent>(4);
         private readonly FixVec2 p1Spawn;
         private readonly FixVec2 p2Spawn;
         private int phaseTimer;
@@ -122,6 +123,27 @@ namespace Domain.Infrastructure.Battle
 
             RoundFramesRemaining = Config.RoundFrames;
             phaseTimer = Config.IntroFrames;
+        }
+
+        /// <summary>
+        /// 回滚存档/还原：深快照整局。cloneSeat 把一个座位深拷贝成独立新座位（回滚重放要独立历史）。
+        /// 只复制每帧可变态；Resolver/Pushbox/Config 按引用共享（构建后只读），hitEvents 另起新表（帧内瞬态）。
+        /// 预测（克隆体）不广播一次性事件——视图逐帧【轮询】克隆的状态，不靠事件，避免回滚重放重复触发。
+        /// 与 Go 侧 combat.BattleSimulation.Clone 对称。
+        /// </summary>
+        public BattleSimulation Clone(Func<IInputSeat, IInputSeat> cloneSeat)
+        {
+            var ns = (BattleSimulation)MemberwiseClone();
+            ns.hitEvents = new List<HitEvent>(4);
+            ns.HitOccurred = null;
+            ns.RoundStarted = null;
+            ns.RoundEnded = null;
+            ns.MatchEnded = null;
+            ns.TickFinished = null;
+            // 每个 fighter 只克隆一次座位，input 与 Movement.input 共用之。
+            ns.P1 = P1.CloneWith(cloneSeat(P1.InputController));
+            ns.P2 = P2.CloneWith(cloneSeat(P2.InputController));
+            return ns;
         }
 
         /// <summary>推进一个逻辑帧（60Hz 语义；调用频率由驱动器负责）。</summary>

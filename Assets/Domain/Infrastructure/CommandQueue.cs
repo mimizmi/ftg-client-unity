@@ -69,6 +69,24 @@ namespace Domain.Infrastructure
         }
         
         public void Clear() => pending.Clear();
+
+        /// <summary>深拷贝指令队列（回滚存档）：每条 DetectedCommand 单独复制，与原队列独立。</summary>
+        public CommandQueue Clone()
+        {
+            var copy = new CommandQueue { BufferFrames = BufferFrames };
+            for (int i = 0; i < pending.Count; i++)
+            {
+                DetectedCommand d = pending[i];
+                copy.pending.Add(new DetectedCommand
+                {
+                    Id = d.Id,
+                    Priority = d.Priority,
+                    DetectedFrame = d.DetectedFrame,
+                    ExpireFrame = d.ExpireFrame,
+                });
+            }
+            return copy;
+        }
         
         public bool TryPeek(out DetectedCommand command, Predicate<DetectedCommand> filter = null)
         {

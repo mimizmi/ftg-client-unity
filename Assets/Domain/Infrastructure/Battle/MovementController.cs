@@ -28,7 +28,7 @@ namespace Domain.Infrastructure.Battle
     public sealed class MovementController
     {
         private readonly MovementConfig config;
-        private readonly IInputSeat input;
+        private IInputSeat input; // 回滚克隆时改指向新座位（CloneWith）；其余时候恒定
         private readonly Func<string, MoveData> resolveMove;
 
         public MovementState State { get; private set; } = MovementState.Idle;
@@ -51,6 +51,18 @@ namespace Domain.Infrastructure.Battle
             this.config = config;
             this.input = input;
             this.resolveMove = resolveMove;
+        }
+
+        /// <summary>
+        /// 回滚存档：深克隆移动状态机，把输入视图改指向新座位。config/resolveMove 按引用共享
+        /// （resolveMove 闭包从共享且不可变的 moves 字典取招，克隆后仍返回正确 MoveData）。
+        /// 与 Go 侧 combat.MovementController.cloneWith 对称。
+        /// </summary>
+        internal MovementController CloneWith(IInputSeat newInput)
+        {
+            var nm = (MovementController)MemberwiseClone();
+            nm.input = newInput;
+            return nm;
         }
 
         // ===================== 对外状态查询 =====================

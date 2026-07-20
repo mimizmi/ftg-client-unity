@@ -45,7 +45,7 @@ namespace Domain.Infrastructure.Battle
         public bool FacingRight = true;
         public int Health = 1000;
 
-        private readonly IInputSeat input;
+        private IInputSeat input; // 回滚克隆时改指向新座位（CloneWith）；其余时候恒定
         private readonly MoveTable moveTable;
         private readonly Dictionary<string, MoveData> moves = new Dictionary<string, MoveData>();
 
@@ -111,8 +111,8 @@ namespace Domain.Infrastructure.Battle
         // TryAct 中立态每逻辑帧都要 TryPeek 探测队列，谓词若写成捕获 cancelSource/cmd 的
         // lambda，每帧都产生 闭包+委托 两次堆分配（战斗循环唯一的每帧分配源）。
         // 改为字段谓词 + "本次调用参数"过渡字段：单线程逻辑帧内写入即用，无跨帧状态。
-        private readonly Predicate<DetectedCommand> commandResolvable;
-        private readonly Predicate<DetectedCommand> matchesConsumeId;
+        private Predicate<DetectedCommand> commandResolvable;
+        private Predicate<DetectedCommand> matchesConsumeId;
         private string pendingCancelSource;
         private CancelKind pendingCancelKind;
         private string pendingConsumeId;
@@ -124,14 +124,37 @@ namespace Domain.Infrastructure.Battle
             Movement = new MovementController(movementConfig, input,
                 id => moves.TryGetValue(id , out MoveData m) ? m : null);
 
-            // 只捕获 this（一次性分配）；可变参数经 pending* 字段传入
-            commandResolvable = c => this.moveTable.ResolveCommand(
-                c.Id, this.input.Buffer.Latest.Pressed, CurrentStance,
+            RebindPredicates();
+        }
+
+        // 只捕获 this（一次性分配）；可变参数经 pending* 字段传入。
+        // 抽成方法是为了回滚克隆能在【克隆体】上重绑——MemberwiseClone 复制的旧委托捕获的是
+        // 原实例，直接沿用会让预测模拟读到原实例的 input/pending* → 串味。
+        private void RebindPredicates()
+        {
+            commandResolvable = c => moveTable.ResolveCommand(
+                c.Id, input.Buffer.Latest.Pressed, CurrentStance,
                 pendingCancelSource, pendingCancelKind, this) != null;
             matchesConsumeId = c => c.Id == pendingConsumeId;
         }
 
-        public MovementController Movement { get; }
+        /// <summary>
+        /// 回滚存档：深克隆本角色状态。newSeat 是本角色对应的新座位（input 与 Movement 共用之）。
+        /// 只复制每帧可变态；moveTable/moves/reactionMoveIds/MoveData 指针按引用共享（构建后只读）。
+        /// 出招广播 MoveStarted 清空——预测（一次性）模拟静默，只由权威 confirmed 触发。
+        /// 与 Go 侧 combat.FighterState.clone 对称。
+        /// </summary>
+        internal FighterState CloneWith(IInputSeat newSeat)
+        {
+            var nf = (FighterState)MemberwiseClone();
+            nf.input = newSeat;
+            nf.Movement = Movement.CloneWith(newSeat);
+            nf.MoveStarted = null;
+            nf.RebindPredicates(); // 谓词须绑到克隆体
+            return nf;
+        }
+
+        public MovementController Movement { get; private set; }
 
         /// <summary>
         /// 当前姿态。招式表用它把同一输入解析成不同招式（5LP / 2LP / j.LP）。
