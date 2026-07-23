@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Domain.Domain.View;
 using Domain.Infrastructure.Battle;
 using Domain.Service.Battle;
 using UnityEngine;

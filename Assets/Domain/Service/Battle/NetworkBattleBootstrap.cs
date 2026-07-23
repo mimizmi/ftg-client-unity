@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
+using Domain.Domain.View;
 using Domain.Infrastructure.Battle;
 using Domain.Infrastructure.FixedPoint;
 using Domain.Infrastructure.Input;

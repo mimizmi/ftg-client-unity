@@ -1,11 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using Domain.Infrastructure.Motion;
-using Domain.Service;
+using Domain.Infrastructure.Battle;
 using Domain.Service.Battle;
 using UnityEngine;
 
-namespace Domain.Infrastructure.Battle
+namespace Domain.Domain.View
 {
     public class FighterView : MonoBehaviour
     {
@@ -144,7 +143,7 @@ namespace Domain.Infrastructure.Battle
         }
  
         /// <summary>定点 → 浮点（表现层边界：只在这里转换，模拟内禁 float）。</summary>
-        private static Vector2 ToVector2(Domain.Infrastructure.FixedPoint.FixVec2 v)
+        private static Vector2 ToVector2(global::Domain.Infrastructure.FixedPoint.FixVec2 v)
             => new Vector2(v.X.ToFloat(), v.Y.ToFloat());
 
         private void SyncAnimation(FighterState fighter)
